@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CTI RAG Chatbot — Cyber Threat Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">🛡️</span>
+        <span class="logo-text">CTI<span class="accent">RAG</span></span>
+      </div>
+      <div class="sidebar-section">
+        <div class="status-badge">
+          <span class="dot pulse"></span>
+          <span>Connected — Groq LLM</span>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <p class="sidebar-label">Data Source</p>
+        <p class="sidebar-val">MITRE ATT&CK Enterprise</p>
+        <p class="sidebar-label mt">Embeddings</p>
+        <p class="sidebar-val">all-MiniLM-L6-v2 (local)</p>
+        <p class="sidebar-label mt">Model</p>
+        <p class="sidebar-val">llama-3.3-70b-versatile</p>
+      </div>
+      <div class="sidebar-section suggestions">
+        <p class="sidebar-label">Try asking…</p>
+        <button class="suggestion-chip" data-q="What is the T1059 technique?">T1059 technique</button>
+        <button class="suggestion-chip" data-q="How can I detect credential dumping?">Detect credential dumping</button>
+        <button class="suggestion-chip" data-q="What techniques does APT28 use?">APT28 tactics</button>
+        <button class="suggestion-chip" data-q="What are common privilege escalation techniques?">Privilege
+          escalation</button>
+        <button class="suggestion-chip" data-q="Tell me about Cobalt Strike">Cobalt Strike</button>
+      </div>
+      <div class="sidebar-footer">
+        <button id="reset-btn" class="btn-ghost">↺ New Chat</button>
+      </div>
+    </aside>
+    <main class="chat-area">
+      <div class="chat-header">
+        <h1>Cyber Threat Intelligence Assistant</h1>
+        <p>Ask questions grounded in the MITRE ATT&CK knowledge base</p>
+      </div>
+      <div id="messages" class="messages">
+        <div class="message bot">
+          <div class="avatar">🤖</div>
+          <div class="bubble">
+            <p>Hello! I'm your CTI analyst assistant. Ask me about MITRE ATT&CK techniques, threat groups, malware, or
+              mitigations.</p>
+          </div>
+        </div>
+      </div>
+      <div class="input-bar">
+        <textarea id="question-input" placeholder="Ask about a threat, technique, or mitigation…" rows="1"></textarea>
+        <button id="send-btn" class="send-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+
+</html>

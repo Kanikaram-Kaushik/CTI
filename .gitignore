@@ -1,31 +1,38 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
 *.egg-info/
 dist/
 build/
 .eggs/
 
 # Virtual environment
-.venv/
 venv/
 env/
+.venv/
+
+# Environment variables (SENSITIVE - never commit API keys!)
+.env
+
+# FAISS index (large binary files - regenerate with ingest.py)
+faiss_index/
+cti_rag_chatbot/faiss_index/
+
+# Data files (large)
+data/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
-
-# Environment variables
-.env
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# FAISS index (large binary files)
-faiss_index/
-cti_rag_chatbot/faiss_index/
-
-# Data files (too large for git)
-data/
+*.swp
