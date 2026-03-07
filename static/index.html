@@ -5,10 +5,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CTI RAG Chatbot — Cyber Threat Intelligence</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -20,9 +16,9 @@
         <span class="logo-text">CTI<span class="accent">RAG</span></span>
       </div>
       <div class="sidebar-section">
-        <div class="status-badge">
+        <div id="status-badge" class="status-badge">
           <span class="dot pulse"></span>
-          <span>Connected — Groq LLM</span>
+          <span id="status-text">Connecting…</span>
         </div>
       </div>
       <div class="sidebar-section">
@@ -31,7 +27,7 @@
         <p class="sidebar-label mt">Embeddings</p>
         <p class="sidebar-val">all-MiniLM-L6-v2 (local)</p>
         <p class="sidebar-label mt">Model</p>
-        <p class="sidebar-val">llama-3.3-70b-versatile</p>
+        <p id="model-name" class="sidebar-val">loading…</p>
       </div>
       <div class="sidebar-section suggestions">
         <p class="sidebar-label">Try asking…</p>

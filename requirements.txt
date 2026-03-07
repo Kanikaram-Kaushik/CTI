@@ -4,6 +4,7 @@ langchain
 langchain-core
 langchain-community
 langchain-ollama
+langchain-groq
 langchain-huggingface
 langchain-text-splitters
 sentence-transformers
