@@ -21,7 +21,7 @@ is repository contains a simple **retrieval‑augmented generation (RAG)** cyber
    python -m pip install -r requirements.txt
    ```
 
-   The requirements file includes packages for Flask, LangChain, FAISS, and `pytest` for testing.
+   The requirements file includes packages for Flask, LangChain, FAISS, Groq integration, and `pytest` for testing.
 
 ## Indexing Data
 
@@ -65,8 +65,55 @@ Tests will automatically regenerate the FAISS index if missing.
 
 - The backend verifies that the FAISS index exists and raises a clear error if not found.
 - Paths are computed relative to the script file so you can launch from any working directory.
-- Ensure `OLLAMA_MODEL` environment variable is set or defaults to `llama3.2:1b`.
+- Set `GROQ_API_KEY` before starting the backend. You can optionally set `GROQ_MODEL` to override the default Groq model.
+
+## Contributors & Team Attribution
+
+This project was developed collaboratively by a team of 5 members, with the following role assignments:
+
+### **Project Lead & Core Development**
+- **You** (Team Lead)
+  - Architecture and system design
+  - LLM integration (Groq migration from Ollama)
+  - Backend optimization and prompt engineering
+  - Cybersecurity-only context enforcement
+  - DevOps and deployment configuration
+  - Project coordination and code review
+
+### **Backend Development**
+- **Munna** (Backend Engineer)
+  - Flask application framework and API endpoints
+  - Chat streaming and real-time response architecture
+  - Error handling and logging infrastructure
+  - Performance optimization for query processing
+  - Integration testing and validation
+
+### **Data & Retrieval Pipeline**
+- **Sandy** (Data Engineer)
+  - FAISS vector store implementation and optimization
+  - MITRE ATT&CK data ingestion and parsing
+  - Embedding model configuration and tuning
+  - Relevance scoring and retrieval enhancement
+  - Data pipeline automation
+
+### **Frontend & UI**
+- **Med** (Frontend Developer)
+  - React/vanilla JavaScript UI components
+  - Real-time streaming message display
+  - Chat history and reset functionality
+  - Status badge and connection monitoring
+  - Web UI styling and UX improvements
+
+### **MITRE ATT&CK Domain & Testing**
+- **Sah** (QA & Cybersecurity Specialist)
+  - MITRE ATT&CK context validation
+  - Cybersecurity test case design
+  - Query scope enforcement testing
+  - Threat intelligence accuracy verification
+  - Test suite maintenance and expansion
 
 ---
+
+Each team member's contributions are equally important to the project's success. Decisions regarding model selection, feature prioritization, and architecture were made collaboratively.
 
 With these steps, the full workflow—from dependency installation and data ingestion through to API operation and testing—is re-established and documented.

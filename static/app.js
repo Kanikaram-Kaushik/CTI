@@ -1,7 +1,13 @@
 const messagesEl = document.getElementById("messages");
 const questionInput = document.getElementById("question-input");
 const sendBtn = document.getElementById("send-btn");
+const stopBtn = document.getElementById("stop-btn");
 const resetBtn = document.getElementById("reset-btn");
+
+let activeController = null;
+let activeReader = null;
+let activeTypingId = null;
+let isStreaming = false;
 
 const API_BASE = window.location.origin.includes('5000') ? '' : 'http://127.0.0.1:5000';
 
@@ -13,16 +19,8 @@ const API_BASE = window.location.origin.includes('5000') ? '' : 'http://127.0.0.
         const badge = document.getElementById("status-badge");
         const statusText = document.getElementById("status-text");
         const modelName = document.getElementById("model-name");
-        if (data.mode === "groq") {
-            statusText.textContent = "Online — Groq Cloud";
-            modelName.textContent = data.model;
-        } else if (data.mode === "ollama") {
-            statusText.textContent = "Offline — Ollama Local";
-            badge.classList.add("offline-mode");
-            modelName.textContent = data.model + " (local)";
-        } else {
-            statusText.textContent = "Connecting…";
-        }
+        statusText.textContent = data.ready ? "Online — Groq Cloud" : "Connecting…";
+        modelName.textContent = data.model || "Groq";
     } catch {
         const statusText = document.getElementById("status-text");
         if (statusText) statusText.textContent = "Backend unavailable";
@@ -30,6 +28,7 @@ const API_BASE = window.location.origin.includes('5000') ? '' : 'http://127.0.0.
 })();
 
 sendBtn.addEventListener("click", sendMessage);
+if (stopBtn) stopBtn.addEventListener("click", stopResponse);
 questionInput.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
@@ -39,21 +38,25 @@ questionInput.addEventListener("input", () => {
 });
 
 async function sendMessage() {
+    if (isStreaming) return;
     const q = questionInput.value.trim();
     if (!q) return;
     appendMessage("user", q);
     questionInput.value = "";
     questionInput.style.height = "auto";
-    sendBtn.disabled = true;
-    const typingId = showTyping();
+    setStreamingState(true);
+    activeTypingId = showTyping();
+    activeController = new AbortController();
     try {
         const res = await fetch(`${API_BASE}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q }),
+            signal: activeController.signal,
         });
         if (!res.ok) {
-            removeTyping(typingId);
+            removeTyping(activeTypingId);
+            activeTypingId = null;
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || "Request failed.");
         }
@@ -67,6 +70,7 @@ async function sendMessage() {
         bubble.className = "bubble";
 
         const reader = res.body.getReader();
+        activeReader = reader;
         const decoder = new TextDecoder("utf-8");
         let fullText = "";
         let sourcesData = [];
@@ -92,7 +96,8 @@ async function sendMessage() {
                         if (evt.chunk) {
                             if (!hasStartedText) {
                                 hasStartedText = true;
-                                removeTyping(typingId);
+                                removeTyping(activeTypingId);
+                                activeTypingId = null;
                                 msg.appendChild(avatar);
                                 msg.appendChild(bubble);
                                 messagesEl.appendChild(msg);
@@ -108,7 +113,8 @@ async function sendMessage() {
 
         // Edge case: if loop finished but no text was generated
         if (!hasStartedText) {
-            removeTyping(typingId);
+            removeTyping(activeTypingId);
+            activeTypingId = null;
             msg.appendChild(avatar);
             msg.appendChild(bubble);
             messagesEl.appendChild(msg);
@@ -138,11 +144,41 @@ async function sendMessage() {
             scrollToBottom();
         }
     } catch (e) {
-        removeTyping(typingId);
-        appendMessage("bot", `❌ ${e.message}`);
+        removeTyping(activeTypingId);
+        activeTypingId = null;
+        if (e.name !== "AbortError") {
+            appendMessage("bot", `❌ ${e.message}`);
+        }
     } finally {
-        sendBtn.disabled = false;
+        activeReader = null;
+        activeController = null;
+        setStreamingState(false);
         questionInput.focus();
+    }
+}
+
+function stopResponse() {
+    if (!isStreaming) return;
+    if (activeReader) {
+        activeReader.cancel().catch(() => { });
+    }
+    if (activeController) {
+        activeController.abort();
+    }
+    removeTyping(activeTypingId);
+    activeTypingId = null;
+    setStreamingState(false);
+}
+
+function setStreamingState(active) {
+    isStreaming = active;
+    sendBtn.disabled = active;
+    if (stopBtn) {
+        stopBtn.disabled = !active;
+        stopBtn.style.display = active ? 'flex' : 'none';
+        stopBtn.style.alignItems = 'center';
+        stopBtn.style.justifyContent = 'center';
+        sendBtn.style.display = active ? 'none' : 'flex';
     }
 }
 

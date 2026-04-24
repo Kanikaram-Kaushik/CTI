@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRS - CTI RAG Chatbot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.7;
+            color: #333;
+            background: white;
+            padding: 40px;
+            font-size: 11pt;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #1a73e8;
+            padding-bottom: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 32pt;
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 12pt;
+            margin: 5px 0;
+        }
+        
+        h1 {
+            font-size: 26pt;
+            color: #1a73e8;
+            margin: 40px 0 20px 0;
+            border-bottom: 3px solid #1a73e8;
+            padding-bottom: 10px;
+            page-break-after: avoid;
+        }
+        
+        h2 {
+            font-size: 18pt;
+            color: #1a73e8;
+            margin: 30px 0 15px 0;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 14pt;
+            color: #34495e;
+            margin: 20px 0 12px 0;
+            page-break-after: avoid;
+        }
+        
+        h4 {
+            font-size: 12pt;
+            color: #555;
+            margin: 15px 0 10px 0;
+            font-weight: 600;
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin-bottom: 12px;
+            text-align: justify;
+        }
+        
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 10pt;
+        }
+        
+        th {
+            background-color: #1a73e8;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #1a73e8;
+        }
+        
+        td {
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        tr:hover {
+            background-color: #f0f0f0;
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+            color: #d63384;
+        }
+        
+        pre {
+            background-color: #f4f4f4;
+            border-left: 4px solid #1a73e8;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 9pt;
+            border-radius: 4px;
+            page-break-inside: avoid;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #333;
+        }
+        
+        blockquote {
+            border-left: 4px solid #ddd;
+            padding-left: 20px;
+            margin: 20px 0;
+            color: #666;
+            font-style: italic;
+        }
+        
+        strong, b {
+            color: #1a73e8;
+            font-weight: 600;
+        }
+        
+        em, i {
+            font-style: italic;
+            color: #555;
+        }
+        
+        .toc {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            page-break-inside: avoid;
+            border-radius: 4px;
+        }
+        
+        .toc h3 {
+            margin-top: 0;
+        }
+        
+        .toc ul {
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .toc li {
+            margin-bottom: 8px;
+            margin-left: 20px;
+        }
+        
+        .toc a {
+            text-decoration: none;
+            color: #1a73e8;
+            border-bottom: 1px dashed #1a73e8;
+        }
+        
+        .page-break {
+            page-break-after: always;
+            margin: 0;
+        }
+        
+        .requirement {
+            background-color: #f0f7ff;
+            border-left: 4px solid #1a73e8;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .requirement-id {
+            font-weight: bold;
+            color: #1a73e8;
+        }
+        
+        .meta-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 10pt;
+        }
+        
+        .meta-info div {
+            margin: 5px 0;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 20px;
+            }
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+            h1, h2, h3 {
+                page-break-after: avoid;
+            }
+            table, pre {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Software Requirements Specification (SRS)</h1>
+            <p><strong>Cyber Threat Intelligence RAG Chatbot</strong></p>
+            <p style="margin-top: 30px; font-size: 10pt;">
+                <strong>Project:</strong> CTI RAG Chatbot<br>
+                <strong>Version:</strong> 1.0<br>
+                <strong>Date:</strong> April 24, 2026<br>
+                <strong>Status:</strong> Final<br>
+                <strong>Document Type:</strong> Software Requirements Specification
+            </p>
+        </div>
+
+        <!-- Table of Contents -->
+        <div class="toc">
+            <h3>📑 Table of Contents</h3>
+            <ul>
+                <li><a href="#1">1. Introduction</a></li>
+                <li><a href="#2">2. Overall Description</a></li>
+                <li><a href="#3">3. Functional Requirements</a></li>
+                <li><a href="#4">4. Non-Functional Requirements</a></li>
+                <li><a href="#5">5. System Architecture</a></li>
+                <li><a href="#6">6. Data Requirements</a></li>
+                <li><a href="#7">7. Interface Requirements</a></li>
+                <li><a href="#8">8. Constraints & Limitations</a></li>
+                <li><a href="#9">9. Quality Attributes</a></li>
+                <li><a href="#10">10. Acceptance Criteria</a></li>
+            </ul>
+        </div>
+
+        <div class="page-break"></div>
+
+        <!-- 1. Introduction -->
+        <h1 id="1">1. Introduction</h1>
+
+        <h2>1.1 Purpose</h2>
+        <p>This document specifies the functional and non-functional requirements for the <strong>Cyber Threat Intelligence RAG Chatbot</strong>, a system designed to democratize access to threat intelligence by providing security analysts with conversational, context-grounded answers about MITRE ATT&CK techniques, tactics, and adversary profiles.</p>
+
+        <h2>1.2 Document Scope</h2>
+        <p>This SRS covers:</p>
+        <ul>
+            <li>Functional requirements for the chatbot system</li>
+            <li>Non-functional requirements (performance, security, scalability)</li>
+            <li>System architecture and components</li>
+            <li>Data requirements and MITRE ATT&CK integration</li>
+            <li>User interface and API specifications</li>
+            <li>System constraints and limitations</li>
+            <li>Quality attributes and acceptance criteria</li>
+        </ul>
+
+        <h2>1.3 Intended Audience</h2>
+        <p>This document is intended for:</p>
+        <ul>
+            <li>Development team members</li>
+            <li>Project stakeholders and management</li>
+            <li>Quality assurance and testing team</li>
+            <li>System architects and technical leads</li>
+            <li>End users and security operations center (SOC) personnel</li>
+        </ul>
+
+        <h2>1.4 Project Overview</h2>
+        <p>The CTI RAG Chatbot is a retrieval-augmented generation (RAG) system that leverages:</p>
+        <ul>
+            <li><strong>MITRE ATT&CK Framework:</strong> Authoritative cybersecurity knowledge base with 200+ techniques, 100+ threat groups, and tactical mitigations</li>
+            <li><strong>Vector Embeddings:</strong> Semantic understanding of threat intelligence using the all-MiniLM-L6-v2 embedding model (384-dimensional vectors)</li>
+            <li><strong>FAISS Retrieval:</strong> Fast approximate nearest neighbor search for document similarity</li>
+            <li><strong>Large Language Models:</strong> Groq cloud LLM for grounded, conversational responses</li>
+            <li><strong>Hallucination Guards:</strong> Validation mechanisms to prevent false threat intelligence</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 2. Overall Description -->
+        <h1 id="2">2. Overall Description</h1>
+
+        <h2>2.1 Product Perspective</h2>
+        <p>The CTI RAG Chatbot operates as a standalone web service accessible through a REST API and static web interface. It integrates with:</p>
+        <ul>
+            <li><strong>MITRE ATT&CK Data:</strong> STIX JSON format, downloaded and indexed locally</li>
+            <li><strong>Groq API:</strong> Cloud LLM service for natural language generation</li>
+            <li><strong>HuggingFace Models:</strong> Local embedding model for semantic search</li>
+            <li><strong>FAISS Library:</strong> Open-source vector database for indexing</li>
+        </ul>
+
+        <h2>2.2 Product Functions</h2>
+        <table>
+            <tr>
+                <th>Function</th>
+                <th>Description</th>
+                <th>Priority</th>
+            </tr>
+            <tr>
+                <td><strong>Conversational Query Interface</strong></td>
+                <td>Accept natural language questions about MITRE ATT&CK techniques, tactics, adversaries, and mitigations</td>
+                <td>Critical</td>
+            </tr>
+            <tr>
+                <td><strong>Semantic Retrieval</strong></td>
+                <td>Find most relevant MITRE ATT&CK documents using embedding-based similarity search</td>
+                <td>Critical</td>
+            </tr>
+            <tr>
+                <td><strong>Grounded Response Generation</strong></td>
+                <td>Generate answers using LLM augmented with retrieved context</td>
+                <td>Critical</td>
+            </tr>
+            <tr>
+                <td><strong>Source Attribution</strong></td>
+                <td>Return citations (URLs, technique IDs) for all responses</td>
+                <td>High</td>
+            </tr>
+            <tr>
+                <td><strong>Hallucination Prevention</strong></td>
+                <td>Validate responses are grounded in retrieved context</td>
+                <td>High</td>
+            </tr>
+            <tr>
+                <td><strong>Chat History Management</strong></td>
+                <td>Maintain multi-turn conversation context</td>
+                <td>Medium</td>
+            </tr>
+            <tr>
+                <td><strong>Query Rewriting</strong></td>
+                <td>Redirect offensive queries toward defensive research</td>
+                <td>Medium</td>
+            </tr>
+        </table>
+
+        <h2>2.3 User Classes and Characteristics</h2>
+        <table>
+            <tr>
+                <th>User Class</th>
+                <th>Characteristics</th>
+                <th>Usage Pattern</th>
+            </tr>
+            <tr>
+                <td><strong>Security Analyst</strong></td>
+                <td>Conducts threat investigations, medium technical expertise</td>
+                <td>Tactical lookups, 5-10 queries/day</td>
+            </tr>
+            <tr>
+                <td><strong>CTI Specialist</strong></td>
+                <td>Expert in threat intelligence, deep ATT&CK knowledge</td>
+                <td>Research synthesis, 20+ queries/day</td>
+            </tr>
+            <tr>
+                <td><strong>SOC Manager</strong></td>
+                <td>Oversees security operations, less technical</td>
+                <td>Overview queries, ad-hoc usage</td>
+            </tr>
+            <tr>
+                <td><strong>Incident Responder</strong></td>
+                <td>Active incident handling, time-sensitive decisions</td>
+                <td>Real-time lookups, 50+ queries/day during incidents</td>
+            </tr>
+        </table>
+
+        <h2>2.4 Operating Environment</h2>
+        <ul>
+            <li><strong>Deployment:</strong> On-premises or cloud virtual machines</li>
+            <li><strong>OS:</strong> Windows, Linux, macOS (Python 3.8+)</li>
+            <li><strong>Network:</strong> Internet required for Groq API (alternative: offline with local LLM)</li>
+            <li><strong>Hardware:</strong> Minimum 2GB RAM, 500MB disk (FAISS index)</li>
+            <li><strong>Browser:</strong> Modern browsers supporting HTML5, ES6 JavaScript (Chrome, Firefox, Edge, Safari)</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 3. Functional Requirements -->
+        <h1 id="3">3. Functional Requirements</h1>
+
+        <h2>3.1 Chat API (POST /api/chat)</h2>
+        <div class="requirement">
+            <div><span class="requirement-id">FR1.1:</span> Accept JSON request with user question</div>
+            <ul>
+                <li>Input: <code>{"question": "What is T1059?"}</code></li>
+                <li>Validate question length (max 1000 characters)</li>
+                <li>Sanitize input to prevent injection attacks</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR1.2:</span> Perform semantic retrieval</div>
+            <ul>
+                <li>Embed user question using all-MiniLM-L6-v2 model</li>
+                <li>Query FAISS index for top-5 most similar documents</li>
+                <li>Return retrieved context with similarity scores</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR1.3:</span> Generate LLM response</div>
+            <ul>
+                <li>Invoke Groq API with system prompt + context + question</li>
+                <li>Support configurable LLM model via GROQ_MODEL env var</li>
+                <li>Enforce max 4096 tokens output</li>
+                <li>Set temperature to 0.3 for focused, consistent answers</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR1.4:</span> Validate response groundedness</div>
+            <ul>
+                <li>Check that answer is supported by retrieved context</li>
+                <li>If not grounded: return "Cannot answer" message instead</li>
+                <li>Include confidence indicators in response</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR1.5:</span> Return structured response</div>
+            <ul>
+                <li>JSON response: <code>{"success": true, "answer": "...", "sources": [...], "context": "...", "model": "..."}</code></li>
+                <li>Include source attribution: ID, name, type, URL</li>
+                <li>Include full retrieved context for debugging</li>
+                <li>Include LLM model name used</li>
+            </ul>
+        </div>
+
+        <h2>3.2 Reset Endpoint (POST /api/reset)</h2>
+        <div class="requirement">
+            <div><span class="requirement-id">FR2.1:</span> Clear chat history</div>
+            <ul>
+                <li>Clear session's chat_history array</li>
+                <li>Return success confirmation</li>
+                <li>Maintain session isolation across users</li>
+            </ul>
+        </div>
+
+        <h2>3.3 Web Interface</h2>
+        <div class="requirement">
+            <div><span class="requirement-id">FR3.1:</span> Chat UI rendering</div>
+            <ul>
+                <li>Display conversational messages (user/bot bubbles)</li>
+                <li>Show source citations with URLs below responses</li>
+                <li>Display loading indicators during API calls</li>
+                <li>Support markdown rendering in responses</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR3.2:</span> Query suggestions</div>
+            <ul>
+                <li>Show example queries as clickable chips</li>
+                <li>Auto-populate input field on chip click</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR3.3:</span> Error handling</div>
+            <ul>
+                <li>Display API errors to user in non-technical language</li>
+                <li>Retry button for failed requests</li>
+                <li>Connection status indicator</li>
+            </ul>
+        </div>
+
+        <h2>3.4 Data Ingestion Pipeline</h2>
+        <div class="requirement">
+            <div><span class="requirement-id">FR4.1:</span> MITRE ATT&CK data loading</div>
+            <ul>
+                <li>Load STIX JSON from local file if available</li>
+                <li>Otherwise, download from official MITRE GitHub repository</li>
+                <li>Cache locally for future runs</li>
+                <li>Support manual STIX file upload</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR4.2:</span> STIX object filtering</div>
+            <ul>
+                <li>Filter to relevant types: attack-pattern, course-of-action, intrusion-set, malware, tool</li>
+                <li>Extract metadata: ID, name, type, description, URL</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR4.3:</span> Text chunking</div>
+            <ul>
+                <li>Split documents into 1000-character chunks</li>
+                <li>Apply 200-character overlap for context preservation</li>
+                <li>Preserve semantic boundaries</li>
+            </ul>
+        </div>
+
+        <div class="requirement">
+            <div><span class="requirement-id">FR4.4:</span> Embedding generation and indexing</div>
+            <ul>
+                <li>Generate embeddings using all-MiniLM-L6-v2 model (384-dim)</li>
+                <li>Create FAISS index with approximate nearest neighbor search</li>
+                <li>Save index to disk for persistence</li>
+                <li>Support index versioning and updates</li>
+            </ul>
+        </div>
+
+        <div class="page-break"></div>
+
+        <!-- 4. Non-Functional Requirements -->
+        <h1 id="4">4. Non-Functional Requirements</h1>
+
+        <h2>4.1 Performance Requirements</h2>
+        <table>
+            <tr>
+                <th>Requirement</th>
+                <th>Target</th>
+                <th>Measurement</th>
+            </tr>
+            <tr>
+                <td><strong>Query Latency (Groq)</strong></td>
+                <td>&lt; 1 second</td>
+                <td>Time from API call to response</td>
+            </tr>
+            <tr>
+                <td><strong>FAISS Retrieval</strong></td>
+                <td>&lt; 50ms</td>
+                <td>Vector search time</td>
+            </tr>
+            <tr>
+                <td><strong>Embedding Generation</strong></td>
+                <td>&lt; 100ms</td>
+                <td>Time to embed query</td>
+            </tr>
+            <tr>
+                <td><strong>Throughput</strong></td>
+                <td>≥ 10 req/sec</td>
+                <td>Concurrent user queries</td>
+            </tr>
+            <tr>
+                <td><strong>Index Build Time</strong></td>
+                <td>&lt; 2 minutes</td>
+                <td>First-run ingestion</td>
+            </tr>
+        </table>
+
+        <h2>4.2 Scalability Requirements</h2>
+        <ul>
+            <li><strong>Data Scale:</strong> Support 1200+ MITRE ATT&CK objects, 3500+ chunks</li>
+            <li><strong>Concurrent Users:</strong> Support at least 10 concurrent API requests</li>
+            <li><strong>Index Size:</strong> FAISS index &lt; 100MB on disk</li>
+            <li><strong>Memory:</strong> Peak memory usage &lt; 2GB with local LLM, &lt; 500MB with cloud LLM</li>
+        </ul>
+
+        <h2>4.3 Availability & Reliability</h2>
+        <ul>
+            <li><strong>Uptime:</strong> Target 99% availability during business hours</li>
+            <li><strong>Error Recovery:</strong> Graceful fallback if Groq API unavailable (return "service temporarily unavailable")</li>
+            <li><strong>Data Persistence:</strong> FAISS index persisted to disk, survives application restart</li>
+            <li><strong>Session Management:</strong> Session data retained for conversation context</li>
+        </ul>
+
+        <h2>4.4 Security Requirements</h2>
+        <table>
+            <tr>
+                <th>Requirement</th>
+                <th>Specification</th>
+            </tr>
+            <tr>
+                <td><strong>Input Validation</strong></td>
+                <td>Sanitize all user inputs, limit query length to 1000 chars</td>
+            </tr>
+            <tr>
+                <td><strong>API Key Protection</strong></td>
+                <td>Store GROQ_API_KEY in environment variables, never in source code</td>
+            </tr>
+            <tr>
+                <td><strong>HTTPS/TLS</strong></td>
+                <td>Enforce HTTPS in production; support certificate pinning</td>
+            </tr>
+            <tr>
+                <td><strong>Rate Limiting</strong></td>
+                <td>10 requests/min per IP in production</td>
+            </tr>
+            <tr>
+                <td><strong>Data Privacy</strong></td>
+                <td>Optional offline mode to avoid cloud API transmission</td>
+            </tr>
+            <tr>
+                <td><strong>Query Rewriting</strong></td>
+                <td>Redirect offensive queries toward defensive research</td>
+            </tr>
+        </table>
+
+        <h2>4.5 Usability Requirements</h2>
+        <ul>
+            <li><strong>Responsive Design:</strong> Web UI works on desktop, tablet, mobile</li>
+            <li><strong>Accessibility:</strong> WCAG 2.1 AA compliance (alt text, keyboard navigation)</li>
+            <li><strong>Error Messages:</strong> User-friendly, non-technical language</li>
+            <li><strong>Documentation:</strong> README, API docs, deployment guide included</li>
+        </ul>
+
+        <h2>4.6 Maintainability Requirements</h2>
+        <ul>
+            <li><strong>Code Quality:</strong> Follow PEP 8 Python style guide</li>
+            <li><strong>Testing:</strong> Unit tests for core functions (≥ 80% coverage)</li>
+            <li><strong>Logging:</strong> Structured logging for debugging and monitoring</li>
+            <li><strong>Configuration:</strong> Externalize settings via environment variables</li>
+            <li><strong>Documentation:</strong> Inline code comments, docstrings for functions</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 5. System Architecture -->
+        <h1 id="5">5. System Architecture</h1>
+
+        <h2>5.1 High-Level Architecture</h2>
+        <pre>
+┌─────────────────────────────────────────────────────────┐
+│              User Interface Layer                       │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ HTML/CSS/JavaScript Web UI                       │  │
+│  │ - Chat interface                                 │  │
+│  │ - Source citations                               │  │
+│  │ - Error handling & loading states                │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                         ↓ HTTP/REST
+┌─────────────────────────────────────────────────────────┐
+│            API & Orchestration Layer                    │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Flask Application                                │  │
+│  │ ├─ GET /           (Serve static UI)             │  │
+│  │ ├─ POST /api/chat  (Process queries)             │  │
+│  │ └─ POST /api/reset (Clear history)               │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Query Processing Pipeline                        │  │
+│  │ ├─ Query Rewriting (offensive→defensive)         │  │
+│  │ ├─ Embedding Generation                          │  │
+│  │ ├─ FAISS Retrieval (top-5 docs)                  │  │
+│  │ ├─ LLM Generation (Groq API)                     │  │
+│  │ ├─ Hallucination Guard (validation)              │  │
+│  │ └─ Response Formatting (JSON + sources)          │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│         Knowledge Indexing & Retrieval Layer            │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ FAISS Vector Index                               │  │
+│  │ - Approximate nearest neighbor search            │  │
+│  │ - L2/Cosine similarity metrics                   │  │
+│  │ - Top-K retrieval (k=5)                          │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Embedding Model                                  │  │
+│  │ - all-MiniLM-L6-v2 (384-dim)                     │  │
+│  │ - Local execution (HuggingFace)                  │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Document Store                                   │  │
+│  │ - Chunked MITRE ATT&CK documents                 │  │
+│  │ - Metadata (ID, name, type, URL)                 │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────┐
+│           Data Source & External APIs                   │
+│  ├─ MITRE ATT&CK STIX JSON                             │
+│  ├─ Groq LLM API (cloud inference)                     │
+│  └─ HuggingFace Model Hub (embeddings)                 │
+└─────────────────────────────────────────────────────────┘
+        </pre>
+
+        <h2>5.2 Component Descriptions</h2>
+
+        <h3>5.2.1 Flask Backend (backend.py)</h3>
+        <ul>
+            <li><strong>Purpose:</strong> REST API server and request handler</li>
+            <li><strong>Endpoints:</strong> GET /, POST /api/chat, POST /api/reset</li>
+            <li><strong>Responsibilities:</strong>
+                <ul>
+                    <li>Load FAISS index and embedding model on startup</li>
+                    <li>Handle incoming JSON requests</li>
+                    <li>Orchestrate RAG pipeline</li>
+                    <li>Manage chat history per session</li>
+                    <li>Return structured responses</li>
+                </ul>
+            </li>
+            <li><strong>Dependencies:</strong> Flask, LangChain, FAISS, HuggingFace, Groq</li>
+        </ul>
+
+        <h3>5.2.2 Data Ingestion (ingest.py)</h3>
+        <ul>
+            <li><strong>Purpose:</strong> Prepare MITRE ATT&CK data for retrieval</li>
+            <li><strong>Process:</strong>
+                <ul>
+                    <li>Download or load local STIX JSON</li>
+                    <li>Filter to relevant STIX object types</li>
+                    <li>Extract metadata and descriptions</li>
+                    <li>Chunk text with overlap</li>
+                    <li>Generate embeddings</li>
+                    <li>Build FAISS index</li>
+                </ul>
+            </li>
+            <li><strong>Output:</strong> faiss_index/index.faiss (persisted on disk)</li>
+            <li><strong>Frequency:</strong> Run once before first server startup, or on data updates</li>
+        </ul>
+
+        <h3>5.2.3 Web UI (static/index.html)</h3>
+        <ul>
+            <li><strong>Purpose:</strong> User-facing chatbot interface</li>
+            <li><strong>Features:</strong>
+                <ul>
+                    <li>Chat message display (user/bot bubbles)</li>
+                    <li>Input field with query suggestions</li>
+                    <li>Source citations with links</li>
+                    <li>Loading indicators and error messages</li>
+                    <li>Responsive design</li>
+                </ul>
+            </li>
+            <li><strong>Technologies:</strong> HTML5, CSS3, Vanilla JavaScript (no frameworks)</li>
+        </ul>
+
+        <h3>5.2.4 FAISS Index</h3>
+        <ul>
+            <li><strong>Purpose:</strong> Fast semantic similarity search</li>
+            <li><strong>Content:</strong> Embeddings of 3500+ document chunks</li>
+            <li><strong>Size:</strong> ~50MB on disk</li>
+            <li><strong>Search Metric:</strong> L2 (Euclidean) distance</li>
+            <li><strong>Query Time:</strong> &lt; 50ms for top-5 retrieval</li>
+        </ul>
+
+        <h3>5.2.5 External Services</h3>
+        <ul>
+            <li><strong>Groq API:</strong> Cloud LLM service (mixtral-8x7b or configurable)</li>
+            <li><strong>HuggingFace Hub:</strong> Pre-trained embedding models</li>
+            <li><strong>MITRE GitHub:</strong> STIX data source</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 6. Data Requirements -->
+        <h1 id="6">6. Data Requirements</h1>
+
+        <h2>6.1 Input Data</h2>
+        <table>
+            <tr>
+                <th>Data Source</th>
+                <th>Format</th>
+                <th>Content</th>
+                <th>Update Frequency</th>
+            </tr>
+            <tr>
+                <td><strong>MITRE ATT&CK</strong></td>
+                <td>STIX 2.1 JSON</td>
+                <td>200+ techniques, 100+ groups, 600+ malware, 300+ mitigations</td>
+                <td>Quarterly</td>
+            </tr>
+            <tr>
+                <td><strong>User Queries</strong></td>
+                <td>Plain text (max 1000 chars)</td>
+                <td>Natural language questions</td>
+                <td>Real-time</td>
+            </tr>
+        </table>
+
+        <h2>6.2 Processing Data</h2>
+        <ul>
+            <li><strong>Embedded Chunks:</strong> 3500+ document chunks, each 384-dimensional vector</li>
+            <li><strong>Chat History:</strong> Per-session array of {role, content} messages</li>
+            <li><strong>Metadata:</strong> MITRE object ID, name, type, URL for each document</li>
+        </ul>
+
+        <h2>6.3 Output Data</h2>
+        <table>
+            <tr>
+                <th>Output</th>
+                <th>Format</th>
+                <th>Content</th>
+            </tr>
+            <tr>
+                <td><strong>Chat Response</strong></td>
+                <td>JSON</td>
+                <td>{success, answer, sources[], context, model}</td>
+            </tr>
+            <tr>
+                <td><strong>Retrieved Sources</strong></td>
+                <td>JSON Array</td>
+                <td>[{id, name, type, url}]</td>
+            </tr>
+            <tr>
+                <td><strong>Error Response</strong></td>
+                <td>JSON</td>
+                <td>{success: false, error_message}</td>
+            </tr>
+        </table>
+
+        <h2>6.4 Data Storage</h2>
+        <ul>
+            <li><strong>FAISS Index:</strong> faiss_index/index.faiss (binary format, ~50MB)</li>
+            <li><strong>Metadata:</strong> In-memory during runtime</li>
+            <li><strong>Chat History:</strong> Session-based, in-memory (cleared on reset or session end)</li>
+            <li><strong>STIX Cache:</strong> data/enterprise-attack.json (local copy for offline access)</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 7. Interface Requirements -->
+        <h1 id="7">7. Interface Requirements</h1>
+
+        <h2>7.1 REST API Specification</h2>
+
+        <h3>7.1.1 POST /api/chat</h3>
+        <pre>
+Request:
+  Headers: Content-Type: application/json
+  Body: {
+    "question": "What is T1059?"
+  }
+
+Response (Success):
+  Status: 200 OK
+  Body: {
+    "success": true,
+    "answer": "T1059 (Command and Scripting Interpreter) is...",
+    "sources": [
+      {
+        "id": "attack-pattern--94cb00a7",
+        "name": "Command and Scripting Interpreter",
+        "type": "attack-pattern",
+        "url": "https://attack.mitre.org/techniques/T1059/"
+      }
+    ],
+    "context": "[Retrieved documents...]",
+    "model": "groq (mixtral-8x7b-32768)"
+  }
+
+Response (Failure - Hallucination Guard):
+  Status: 200 OK
+  Body: {
+    "success": false,
+    "answer": "I cannot find enough information to answer this question.",
+    "sources": [],
+    "context": "",
+    "model": "groq"
+  }
+
+Response (Error):
+  Status: 500 Internal Server Error
+  Body: {
+    "error": "FAISS index not found. Run ingest.py first."
+  }
+        </pre>
+
+        <h3>7.1.2 POST /api/reset</h3>
+        <pre>
+Request:
+  Headers: Content-Type: application/json
+  Body: {}
+
+Response:
+  Status: 200 OK
+  Body: {
+    "success": true,
+    "message": "Chat history cleared successfully"
+  }
+        </pre>
+
+        <h3>7.1.3 GET /</h3>
+        <pre>
+Request:
+  No body
+
+Response:
+  Status: 200 OK
+  Content-Type: text/html
+  Body: [static/index.html content]
+        </pre>
+
+        <h2>7.2 User Interface Requirements</h2>
+        <ul>
+            <li><strong>Layout:</strong> Chat interface with message display, input field, and suggestion chips</li>
+            <li><strong>Message Display:</strong> Left-aligned user messages, right-aligned bot responses</li>
+            <li><strong>Source Citations:</strong> Clickable links to MITRE ATT&CK URLs</li>
+            <li><strong>Loading State:</strong> Spinner or progress indicator during API call</li>
+            <li><strong>Error Handling:</strong> Non-technical error messages</li>
+            <li><strong>Responsive:</strong> Works on desktop (1024+px), tablet (768px), mobile (320px)</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 8. Constraints & Limitations -->
+        <h1 id="8">8. Constraints & Limitations</h1>
+
+        <h2>8.1 Technical Constraints</h2>
+        <table>
+            <tr>
+                <th>Constraint</th>
+                <th>Implication</th>
+            </tr>
+            <tr>
+                <td><strong>FAISS In-Memory Index</strong></td>
+                <td>Cannot scale beyond available RAM; limited to ~1B vectors</td>
+            </tr>
+            <tr>
+                <td><strong>LLM Context Window (32K tokens)</strong></td>
+                <td>Cannot process entire MITRE ATT&CK corpus simultaneously</td>
+            </tr>
+            <tr>
+                <td><strong>English-Only Data</strong></td>
+                <td>MITRE ATT&CK is English; system not multilingual</td>
+            </tr>
+            <tr>
+                <td><strong>Groq API Dependency</strong></td>
+                <td>Offline operation unavailable; cloud outages block service</td>
+            </tr>
+            <tr>
+                <td><strong>Local Embeddings</strong></td>
+                <td>all-MiniLM-L6-v2 is smaller; may miss subtle semantic nuances</td>
+            </tr>
+        </table>
+
+        <h2>8.2 Data Limitations</h2>
+        <ul>
+            <li><strong>Knowledge Cutoff:</strong> MITRE ATT&CK data refreshed quarterly; zero-day techniques lag</li>
+            <li><strong>Non-Technical Data:</strong> Cannot ingest binary files, network captures, or images</li>
+            <li><strong>Scope:</strong> Limited to MITRE ATT&CK; excludes CVEs, threat reports, indicators</li>
+        </ul>
+
+        <h2>8.3 Operational Constraints</h2>
+        <ul>
+            <li><strong>Hardware:</strong> Minimum 2GB RAM for comfortable operation</li>
+            <li><strong>Network:</strong> Internet required for Groq API; no offline LLM fallback in production</li>
+            <li><strong>Scalability:</strong> Single-server deployment; horizontal scaling requires external load balancer</li>
+        </ul>
+
+        <h2>8.4 Known Limitations</h2>
+        <ul>
+            <li>No multi-modal data support (text-only)</li>
+            <li>No knowledge graph reasoning (flat retrieval only)</li>
+            <li>Hardcoded query rewriting (not learned from user feedback)</li>
+            <li>No user authentication (assumes trusted internal network)</li>
+            <li>No audit logging of queries</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 9. Quality Attributes -->
+        <h1 id="9">9. Quality Attributes</h1>
+
+        <h2>9.1 Reliability</h2>
+        <ul>
+            <li><strong>Mean Time Between Failures (MTBF):</strong> &gt; 720 hours (30 days)</li>
+            <li><strong>Mean Time to Recovery (MTTR):</strong> &lt; 15 minutes</li>
+            <li><strong>Failure Modes:</strong>
+                <ul>
+                    <li>Groq API timeout → graceful error message</li>
+                    <li>Missing FAISS index → startup error with recovery instructions</li>
+                    <li>Network disconnection → connection retry logic</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>9.2 Testability</h2>
+        <ul>
+            <li><strong>Unit Tests:</strong> ≥ 80% code coverage</li>
+            <li><strong>Integration Tests:</strong> End-to-end chat flow validation</li>
+            <li><strong>Manual UAT:</strong> Query variations, error scenarios, edge cases</li>
+            <li><strong>Performance Tests:</strong> Latency benchmarking under load</li>
+        </ul>
+
+        <h2>9.3 Maintainability</h2>
+        <ul>
+            <li><strong>Code Quality:</strong> PEP 8 compliance, SonarQube score ≥ 80</li>
+            <li><strong>Documentation:</strong> README, API docs, deployment guide, architecture diagrams</li>
+            <li><strong>Logging:</strong> Structured logs (DEBUG, INFO, WARN, ERROR levels)</li>
+            <li><strong>Configuration:</strong> Environment variables for all settings</li>
+        </ul>
+
+        <h2>9.4 Correctness (Threat Intelligence Accuracy)</h2>
+        <ul>
+            <li><strong>Hallucination Rate:</strong> &lt; 5% on test queries</li>
+            <li><strong>Source Accuracy:</strong> 100% of sources must exist in MITRE ATT&CK</li>
+            <li><strong>Fact-Checking:</strong> Manual validation on critical CTI queries</li>
+            <li><strong>Attribution:</strong> All claims must cite source documents</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- 10. Acceptance Criteria -->
+        <h1 id="10">10. Acceptance Criteria</h1>
+
+        <h2>10.1 Functional Acceptance Criteria</h2>
+        <table>
+            <tr>
+                <th>Criterion</th>
+                <th>Success Condition</th>
+            </tr>
+            <tr>
+                <td><strong>Chat Queries</strong></td>
+                <td>User submits question, receives grounded answer with citations</td>
+            </tr>
+            <tr>
+                <td><strong>Multi-turn Conversation</strong></td>
+                <td>System maintains context across 5+ consecutive messages</td>
+            </tr>
+            <tr>
+                <td><strong>Source Attribution</strong></td>
+                <td>All responses include MITRE ATT&CK URLs and technique IDs</td>
+            </tr>
+            <tr>
+                <td><strong>Error Handling</strong></td>
+                <td>Missing FAISS index shows recovery instructions; API errors display gracefully</td>
+            </tr>
+            <tr>
+                <td><strong>Query Rewriting</strong></td>
+                <td>Offensive query "How to hack X?" redirects to defensive context</td>
+            </tr>
+            <tr>
+                <td><strong>MITRE Data Ingestion</strong></td>
+                <td>ingest.py successfully indexes 1200+ STIX objects in &lt; 2 minutes</td>
+            </tr>
+        </table>
+
+        <h2>10.2 Performance Acceptance Criteria</h2>
+        <table>
+            <tr>
+                <th>Metric</th>
+                <th>Threshold</th>
+                <th>Test Method</th>
+            </tr>
+            <tr>
+                <td><strong>Query Latency (Groq)</strong></td>
+                <td>&lt; 1.5 seconds</td>
+                <td>10 representative queries, measure mean latency</td>
+            </tr>
+            <tr>
+                <td><strong>Concurrent Users</strong></td>
+                <td>≥ 5 simultaneous requests</td>
+                <td>Load test with Apache JMeter</td>
+            </tr>
+            <tr>
+                <td><strong>Memory Usage</strong></td>
+                <td>&lt; 1GB (Groq), &lt; 3GB (local LLM)</td>
+                <td>Monitor during 1-hour test</td>
+            </tr>
+        </table>
+
+        <h2>10.3 Security Acceptance Criteria</h2>
+        <ul>
+            <li>No hardcoded API keys in source code</li>
+            <li>GROQ_API_KEY loaded from environment variable</li>
+            <li>Input validation prevents SQL/prompt injection</li>
+            <li>HTTPS enforced in production</li>
+            <li>Rate limiting configured (10 req/min per IP)</li>
+        </ul>
+
+        <h2>10.4 Documentation Acceptance Criteria</h2>
+        <ul>
+            <li>README includes setup, usage, testing instructions</li>
+            <li>API documentation covers all endpoints with examples</li>
+            <li>Architecture diagram clearly shows component interactions</li>
+            <li>Deployment guide for production environments</li>
+        </ul>
+
+        <h2>10.5 UAT Sign-off Criteria</h2>
+        <ul>
+            <li>Security Analyst: Can query MITRE techniques and receive accurate answers</li>
+            <li>CTI Specialist: Multi-turn queries work with proper context synthesis</li>
+            <li>SOC Manager: System provides trustworthy threat intelligence with citations</li>
+            <li>Developers: Code is maintainable, well-documented, with 80%+ test coverage</li>
+        </ul>
+
+        <!-- Footer -->
+        <p style="margin-top: 60px; text-align: center; color: #999; font-size: 9pt; border-top: 1px solid #ddd; padding-top: 20px;">
+            Software Requirements Specification v1.0<br>
+            CTI RAG Chatbot Project<br>
+            Generated: April 24, 2026<br>
+            Status: Final
+        </p>
+    </div>
+</body>
+</html>

@@ -491,3 +491,27 @@ textarea::placeholder {
     opacity: .35;
     cursor: not-allowed;
 }
+
+.stop-btn {
+    height: 46px;
+    min-width: 78px;
+    padding: 0 14px;
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid rgba(248, 113, 113, .45);
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background .2s, border-color .2s, opacity .2s;
+}
+
+.stop-btn:hover:not(:disabled) {
+    background: rgba(248, 113, 113, .10);
+    border-color: var(--danger);
+}
+
+.stop-btn:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+}
