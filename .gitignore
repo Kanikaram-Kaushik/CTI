@@ -36,3 +36,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Exclude local unwanted folder
+unwanted/
