@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: anti-rtrp-backend
+    runtime: python
+    plan: free
+    autoDeploy: true
+    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build && pip install -r requirements.txt
+    startCommand: gunicorn backend:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: anti_rtrp
+      - key: MONGODB_COLLECTION
+        value: chat_history

@@ -2,15 +2,26 @@ import os
 import re
 import socket
 import json
+import math
+import threading
+from collections import Counter
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from dotenv import load_dotenv
+
+try:
+    from pymongo import MongoClient
+    from pymongo.errors import PyMongoError
+except ImportError:
+    MongoClient = None
+    PyMongoError = Exception
 
 load_dotenv()
 
@@ -18,9 +29,18 @@ load_dotenv()
 GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-FAISS_PATH      = "faiss_index"
+BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
+FAISS_PATH      = os.path.join(BASE_DIR, "faiss_index")
+FRONTEND_DIST   = os.path.join(BASE_DIR, "frontend", "dist")
+MONGODB_URI     = os.getenv("MONGODB_URI", "")
+MONGODB_DB      = os.getenv("MONGODB_DB", "anti_rtrp")
+MONGODB_COL     = os.getenv("MONGODB_COLLECTION", "chat_history")
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(
+    __name__,
+    static_folder=os.path.join(FRONTEND_DIST, "assets"),
+    static_url_path="/assets",
+)
 CORS(app)
 
 chat_history = []
@@ -30,19 +50,187 @@ llm_mode     = "groq"
 vector_store = None
 attack_id_map = {}
 intrusion_set_map = {}
+mongo_client = None
+mongo_collection = None
+_startup_lock = threading.Lock()
+_startup_done = False
 
-LOCAL_STIX_FILE = "data/enterprise-attack.json"
+LOCAL_STIX_FILE = os.path.join(BASE_DIR, "data", "enterprise-attack.json")
 
 MIN_RELEVANCE_SCORE = 0.25
+# Only answer when the retrieval confidence is strong enough to avoid guessing.
+ABSTAIN_CONFIDENCE_THRESHOLD = 0.60
 
-MITRE_SCOPE_KEYWORDS = {
-    "mitre", "attack", "att&ck", "technique", "techniques", "tactic", "tactics",
-    "ttp", "ttps", "intrusion", "threat", "threats", "adversary", "adversaries",
-    "apt", "malware", "tool", "tools", "detection", "detections", "mitigation",
-    "mitigations", "credential", "persistence", "lateral", "exfiltration",
-    "privilege", "reconnaissance", "evasion", "execution", "initial access",
-    "command and control", "c2", "defense"
-}
+hybrid_index_docs = []
+hybrid_term_freqs = []
+hybrid_doc_freq = {}
+
+OWASP_BASE_REFS = [
+    {
+        "title": "OWASP Top 10",
+        "url": "https://owasp.org/www-project-top-ten/",
+        "reason": "Primary web application risk categories and defensive priorities.",
+    },
+    {
+        "title": "OWASP ASVS",
+        "url": "https://owasp.org/www-project-application-security-verification-standard/",
+        "reason": "Structured verification checklist for secure design and implementation.",
+    },
+    {
+        "title": "OWASP Cheat Sheet Series",
+        "url": "https://cheatsheetseries.owasp.org/",
+        "reason": "Practical secure coding and hardening guidance.",
+    },
+]
+
+
+def _get_owasp_refs(question):
+    """Return OWASP references relevant to the current CTI query."""
+    q = question.lower()
+    refs = []
+
+    def add_ref(title, url, reason):
+        if not any(r["url"] == url for r in refs):
+            refs.append({"title": title, "url": url, "reason": reason})
+
+    if any(tok in q for tok in ["credential", "password", "auth", "login", "session", "token"]):
+        add_ref(
+            "A07:2021 Identification and Authentication Failures",
+            "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/",
+            "Helpful when discussing credential abuse, authentication bypass, and session risks.",
+        )
+        add_ref(
+            "Authentication Cheat Sheet",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+            "Actionable controls for authentication and account defense.",
+        )
+
+    if any(tok in q for tok in ["injection", "command", "sql", "xss", "script"]):
+        add_ref(
+            "A03:2021 Injection",
+            "https://owasp.org/Top10/A03_2021-Injection/",
+            "Relevant to command, script, and input-based exploitation patterns.",
+        )
+        add_ref(
+            "Input Validation Cheat Sheet",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
+            "Guidance to reduce injection and malformed-input attack paths.",
+        )
+
+    if any(tok in q for tok in ["logging", "monitor", "detect", "detection", "incident", "response"]):
+        add_ref(
+            "A09:2021 Security Logging and Monitoring Failures",
+            "https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/",
+            "Useful for mapping CTI detections to stronger monitoring controls.",
+        )
+        add_ref(
+            "Logging Cheat Sheet",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html",
+            "Operational guidance for high-value security telemetry.",
+        )
+
+    if any(tok in q for tok in ["api", "service", "backend", "microservice"]):
+        add_ref(
+            "OWASP API Security Top 10",
+            "https://owasp.org/www-project-api-security/",
+            "Complements ATT&CK tactics with API-specific risk coverage.",
+        )
+
+    if not refs:
+        for ref in OWASP_BASE_REFS:
+            add_ref(ref["title"], ref["url"], ref["reason"])
+
+    return refs[:4]
+
+
+def _init_mongo():
+    """
+    Initialize a shared MongoDB client once for this long-running Flask process.
+
+    Assumption: traditional long-running server deployment (not serverless).
+    Defaults are used unless env vars are provided.
+    """
+    global mongo_client, mongo_collection
+
+    if MongoClient is None:
+        print("MongoDB disabled: pymongo is not installed in the active Python environment.")
+        return False
+
+    if not MONGODB_URI:
+        print("MongoDB disabled: MONGODB_URI not set.")
+        return False
+
+    try:
+        mongo_client = MongoClient(MONGODB_URI, appname="anti-rtrp-chat")
+        mongo_client.admin.command("ping")
+        db = mongo_client[MONGODB_DB]
+        mongo_collection = db[MONGODB_COL]
+        mongo_collection.create_index("created_at")
+        print(f"MongoDB chat history enabled -> db='{MONGODB_DB}' collection='{MONGODB_COL}'")
+        return True
+    except PyMongoError as e:
+        print(f"MongoDB unavailable ({e})")
+        mongo_client = None
+        mongo_collection = None
+        return False
+
+
+def _save_chat_history(question, answer, sources, retrieval_meta):
+    """Persist one user-assistant exchange in MongoDB if enabled."""
+    if mongo_collection is None:
+        return
+
+    try:
+        mongo_collection.insert_one(
+            {
+                "question": question,
+                "answer": answer,
+                "sources": sources,
+                "retrieval": retrieval_meta,
+                "created_at": datetime.now(timezone.utc),
+                "model": GROQ_MODEL,
+            }
+        )
+    except PyMongoError as e:
+        print(f"MongoDB insert failed ({e})")
+
+
+def _load_chat_history(limit=25):
+    """Load recent persisted exchanges and return frontend-ready message objects."""
+    if mongo_collection is None:
+        return []
+
+    try:
+        rows = list(mongo_collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit))
+    except PyMongoError as e:
+        print(f"MongoDB read failed ({e})")
+        return []
+
+    rows.reverse()
+    messages = []
+    for row in rows:
+        messages.append(
+            {
+                "id": f"u-{len(messages)}",
+                "role": "user",
+                "content": row.get("question", ""),
+                "sources": [],
+                "owaspRefs": [],
+                "retrieval": None,
+            }
+        )
+        messages.append(
+            {
+                "id": f"a-{len(messages)}",
+                "role": "assistant",
+                "content": row.get("answer", ""),
+                "sources": row.get("sources", []),
+                "owaspRefs": [],
+                "retrieval": row.get("retrieval"),
+            }
+        )
+
+    return messages
 
 
 def _try_groq():
@@ -60,7 +248,6 @@ def _try_groq():
             max_tokens=4096,
             groq_api_key=GROQ_API_KEY,
         )
-        # Quick connectivity check – if Groq is unreachable this will raise
         llm.invoke("ping")
         return llm
     except Exception as e:
@@ -77,22 +264,62 @@ def _is_offline():
         return True
 
 
-def _rewrite_query(question):
-    """Rewrite vague or offensive-sounding queries into defensive MITRE ATT&CK research queries."""
-    q = question.lower().strip()
-    # Map common vague offensive queries to proper defensive research queries
-    rewrites = {
-        "how to hack": "What are the most common MITRE ATT&CK techniques used by adversaries to compromise systems, and what are the recommended detection and mitigation strategies?",
-        "how to hack systems": "What are the most common MITRE ATT&CK techniques used by adversaries to compromise systems, and what are the recommended detection and mitigation strategies?",
-        "how to hack a computer": "What MITRE ATT&CK techniques describe methods adversaries use to gain access to computer systems, and how can defenders detect and prevent them?",
-        "how to hack a network": "What MITRE ATT&CK techniques describe network-based attacks, and what are the recommended network defense mitigations?",
-        "how to attack": "What are common initial access and execution techniques in the MITRE ATT&CK framework, and how should organizations defend against them?",
-        "how to exploit": "What exploitation techniques are documented in MITRE ATT&CK, and what mitigations and detections are recommended?",
+def _is_cyber_request(question):
+    """Return True only when the user is asking about MITRE ATT&CK threat intelligence."""
+    q = question.strip().lower()
+    if not q:
+        return False
+
+    greeting_only = {
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "hola",
+        "sup",
+        "good morning",
+        "good afternoon",
+        "good evening",
     }
-    for trigger, rewrite in rewrites.items():
-        if q == trigger or q == trigger + " systems" or q.startswith(trigger):
-            return rewrite
-    return question
+    if q in greeting_only:
+        return False
+
+    # Strictly allow only MITRE ATT&CK and threat intelligence queries.
+    attack_pattern = r"\b(t\d{4}(?:\.\d{3})?|apt\s*\d+|mitre|att&ck)\b"
+    threat_keywords = {
+        "technique",
+        "tactic",
+        "group",
+        "intrusion set",
+        "malware",
+        "tool",
+        "attack pattern",
+        "detection",
+        "mitigation",
+        "adversary",
+        "threat actor",
+        "threat group",
+        "campaign",
+        "ransomware",
+        "vulnerability",
+        "cve",
+        "exploit",
+    }
+    
+    has_attack_indicator = bool(re.search(attack_pattern, q, re.I))
+    has_threat_keyword = any(keyword in q for keyword in threat_keywords)
+    
+    # Accept any substantive query (not pure question starters). This allows threat actor names, malware, tools, etc.
+    # Block only if it's purely a question word or very short non-cyber gibberish.
+    pure_question_starts = {"what", "how", "why", "can", "could", "would", "should", "is", "are", "am", "be", "being", "been"}
+    first_word = q.split()[0] if q.split() else ""
+    
+    # If it starts with a pure question word, require it to have threat keywords
+    if first_word in pure_question_starts:
+        return has_threat_keyword or has_attack_indicator
+    
+    # Otherwise, accept it (it's likely a threat actor/tool/malware name or domain-specific query)
+    return len(q) > 2  # Just ensure it's not too short
 
 
 def _force_cyber_context(question):
@@ -108,9 +335,193 @@ def _force_cyber_context(question):
     )
 
 
-def _is_mitre_scoped_query(question):
-    """All questions are allowed, but they are rewritten into cyber context first."""
-    return True
+def _tokenize(text):
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _build_hybrid_index():
+    """Build lightweight lexical index from FAISS docstore for hybrid retrieval."""
+    global hybrid_index_docs, hybrid_term_freqs, hybrid_doc_freq
+    hybrid_index_docs = []
+    hybrid_term_freqs = []
+    hybrid_doc_freq = {}
+
+    if vector_store is None:
+        return
+
+    doc_items = getattr(getattr(vector_store, "docstore", None), "_dict", {})
+    if not doc_items:
+        return
+
+    for doc in doc_items.values():
+        if not isinstance(doc, Document):
+            continue
+
+        tokens = _tokenize(doc.page_content)
+        if not tokens:
+            continue
+
+        tf = Counter(tokens)
+        hybrid_index_docs.append(doc)
+        hybrid_term_freqs.append(tf)
+
+        for term in tf.keys():
+            hybrid_doc_freq[term] = hybrid_doc_freq.get(term, 0) + 1
+
+
+def _lexical_search(question, k=8):
+    """Simple BM25-like lexical retrieval over in-memory document chunks."""
+    if not hybrid_index_docs:
+        return []
+
+    q_terms = _tokenize(question)
+    if not q_terms:
+        return []
+
+    n_docs = len(hybrid_index_docs)
+    scored = []
+
+    for idx, tf in enumerate(hybrid_term_freqs):
+        score = 0.0
+        overlap_terms = 0
+        for term in q_terms:
+            term_tf = tf.get(term, 0)
+            if term_tf <= 0:
+                continue
+            overlap_terms += 1
+            df = hybrid_doc_freq.get(term, 0)
+            idf = math.log((n_docs + 1) / (df + 1)) + 1.0
+            score += (term_tf / (term_tf + 1.2)) * idf
+
+        if score > 0:
+            # Small overlap reward helps rerank exact-mention chunks higher.
+            overlap_ratio = overlap_terms / max(len(set(q_terms)), 1)
+            score += 0.2 * overlap_ratio
+            scored.append((hybrid_index_docs[idx], score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:k]
+
+
+def _doc_key(doc):
+    md = doc.metadata or {}
+    return (
+        md.get("id", ""),
+        md.get("name", ""),
+        md.get("type", ""),
+        md.get("url", ""),
+        hash(doc.page_content[:180]),
+    )
+
+
+def _normalize_scores(values):
+    if not values:
+        return []
+    max_val = max(values)
+    if max_val <= 0:
+        return [0.0 for _ in values]
+    return [v / max_val for v in values]
+
+
+def _hybrid_retrieve(question, dense_k=8, lexical_k=8, final_k=4):
+    """
+    Hybrid retrieval: FAISS dense retrieval + lexical retrieval + weighted rerank.
+    Returns ranked list of dicts with document and score components.
+    """
+    dense = _retrieve_with_relevance(question, k=dense_k)
+    lexical = _lexical_search(question, k=lexical_k)
+
+    dense_map = {}
+    for doc, score in dense:
+        dense_map[_doc_key(doc)] = (doc, max(score or 0.0, 0.0))
+
+    lexical_map = {}
+    for doc, score in lexical:
+        lexical_map[_doc_key(doc)] = (doc, max(score, 0.0))
+
+    dense_norm_vals = _normalize_scores([v[1] for v in dense_map.values()])
+    lexical_norm_vals = _normalize_scores([v[1] for v in lexical_map.values()])
+
+    dense_norm = {}
+    for key, norm in zip(dense_map.keys(), dense_norm_vals):
+        dense_norm[key] = norm
+
+    lexical_norm = {}
+    for key, norm in zip(lexical_map.keys(), lexical_norm_vals):
+        lexical_norm[key] = norm
+
+    q_terms = set(_tokenize(question))
+    candidates = []
+    for key in set(dense_map.keys()) | set(lexical_map.keys()):
+        doc = (dense_map.get(key) or lexical_map.get(key))[0]
+        d_score = dense_norm.get(key, 0.0)
+        l_score = lexical_norm.get(key, 0.0)
+        doc_terms = set(_tokenize(doc.page_content))
+        overlap = (len(q_terms & doc_terms) / max(len(q_terms), 1)) if q_terms else 0.0
+
+        hybrid_score = (0.60 * d_score) + (0.30 * l_score) + (0.10 * overlap)
+        candidates.append(
+            {
+                "doc": doc,
+                "hybrid_score": hybrid_score,
+                "dense_score": d_score,
+                "lexical_score": l_score,
+                "overlap": overlap,
+            }
+        )
+
+    candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
+    return candidates[:final_k]
+
+
+def _compute_confidence(question, source_docs, ranked_items, force_allow=False):
+    """Compute confidence and abstain decision with user-facing reasons."""
+    reasons = []
+    if not source_docs or not ranked_items:
+        return {
+            "confidence": 0.0,
+            "abstain": True,
+            "reasons": ["No supporting MITRE context was retrieved for this question."],
+            "top_hybrid_score": 0.0,
+            "top_dense_score": 0.0,
+            "top_lexical_score": 0.0,
+        }
+
+    top = ranked_items[0]
+    top_hybrid = float(top.get("hybrid_score", 0.0))
+    top_dense = float(top.get("dense_score", 0.0))
+    top_lexical = float(top.get("lexical_score", 0.0))
+
+    # Confidence factors: retrieval strength + evidence count + entity mention signal.
+    evidence_factor = min(len(source_docs) / 4.0, 1.0)
+    entity_factor = 1.0 if re.search(r"\b(apt\s*\d+|t\d{4}(?:\.\d{3})?)\b", question, re.IGNORECASE) else 0.0
+
+    confidence = (0.55 * top_hybrid) + (0.30 * evidence_factor) + (0.15 * entity_factor)
+    confidence = max(0.0, min(confidence, 1.0))
+
+    if top_hybrid >= 0.55:
+        reasons.append("Top hybrid retrieval score is strong.")
+    elif top_hybrid >= 0.35:
+        reasons.append("Top hybrid retrieval score is moderate.")
+    else:
+        reasons.append("Top hybrid retrieval score is weak.")
+
+    reasons.append(f"Retrieved {len(source_docs)} supporting MITRE chunk(s).")
+    if entity_factor > 0:
+        reasons.append("Query includes an explicit ATT&CK entity pattern (APT/T-ID).")
+
+    abstain = (confidence < ABSTAIN_CONFIDENCE_THRESHOLD) and not force_allow
+    if abstain:
+        reasons.append("Confidence below abstain threshold, returning safe abstention.")
+
+    return {
+        "confidence": round(confidence, 3),
+        "abstain": abstain,
+        "reasons": reasons,
+        "top_hybrid_score": round(top_hybrid, 3),
+        "top_dense_score": round(top_dense, 3),
+        "top_lexical_score": round(top_lexical, 3),
+    }
 
 
 def _retrieve_with_relevance(question, k=5):
@@ -120,7 +531,6 @@ def _retrieve_with_relevance(question, k=5):
     try:
         return vector_store.similarity_search_with_relevance_scores(question, k=k)
     except Exception:
-        # If relevance scores are unavailable, fall back to plain retrieval.
         docs = retriever.invoke(question)
         return [(doc, None) for doc in docs]
 
@@ -147,7 +557,6 @@ def _expand_query_for_retrieval(question):
             f"detection mitigation procedure examples"
         )
 
-    # For very short in-scope prompts, add retrieval hints while preserving user intent.
     if len(q_lower.split()) <= 2:
         return f"MITRE ATT&CK {q} technique tactic threat group malware detection mitigation"
 
@@ -228,6 +637,18 @@ def _load_intrusion_set_map():
     return mapping
 
 
+def _convert_markdown_to_html(text):
+    """Convert markdown formatting (**bold**, ***bold-italic***, *italic*) to HTML tags."""
+    # Order matters: process bold-italic first, then bold, then italic
+    # Bold-italic: ***text***
+    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
+    # Bold: **text**
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    # Italic: *text* (but not already processed)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+    return text
+
+
 def _normalize(s):
     return re.sub(r"\s+", "", s.lower())
 
@@ -236,7 +657,6 @@ def load_chain():
     global retriever, chain, llm_mode, vector_store, attack_id_map, intrusion_set_map
     print("Loading FAISS index...")
 
-    # If we can't reach HuggingFace, tell the hub library to use cached model files
     is_offline = _is_offline()
     cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
     
@@ -264,12 +684,13 @@ def load_chain():
     
     vector_store = FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever    = vector_store.as_retriever(search_kwargs={"k": 5})
+    _build_hybrid_index()
     attack_id_map = _load_attack_id_map()
     intrusion_set_map = _load_intrusion_set_map()
+    print(f"Hybrid lexical chunks indexed: {len(hybrid_index_docs)}")
     print(f"Loaded ATT&CK technique map entries: {len(attack_id_map)}")
     print(f"Loaded intrusion-set map entries: {len(intrusion_set_map)}")
 
-    # Groq is the only supported LLM provider.
     llm = _try_groq()
     if llm is None:
         raise RuntimeError(
@@ -288,15 +709,52 @@ def load_chain():
         ("human", "Question: {question}"),
     ])
 
-    chain = (
-        prompt | llm | StrOutputParser()
-    )
+    chain = prompt | llm | StrOutputParser()
     print("Chain ready [ok]")
+
+
+def ensure_startup():
+    """Run one-time startup for production servers (e.g., gunicorn workers)."""
+    global _startup_done
+    if _startup_done:
+        return
+
+    with _startup_lock:
+        if _startup_done:
+            return
+        _init_mongo()
+        load_chain()
+        _startup_done = True
 
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    if not os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
+        return jsonify(
+            {
+                "error": (
+                    "React frontend build not found. Run 'npm install' and "
+                    "'npm run build' inside the frontend folder."
+                )
+            }
+        ), 503
+    return send_from_directory(FRONTEND_DIST, "index.html")
+
+
+@app.route("/<path:path>")
+def serve_frontend(path):
+    # Let API routes and static assets keep their own handlers.
+    if path.startswith("api/") or path.startswith("assets/"):
+        return jsonify({"error": "Not found"}), 404
+
+    target = os.path.join(FRONTEND_DIST, path)
+    if os.path.exists(target) and os.path.isfile(target):
+        return send_from_directory(FRONTEND_DIST, path)
+
+    if os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
+        return send_from_directory(FRONTEND_DIST, "index.html")
+
+    return jsonify({"error": "Frontend build not found."}), 503
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -310,26 +768,18 @@ def chat():
     if not question:
         return jsonify({"error": "Question cannot be empty."}), 400
 
-    # Hard scope gate: reject casual/non-MITRE prompts before generation.
-    if not _is_mitre_scoped_query(question):
+    if not _is_cyber_request(question):
         return jsonify({
-            "error": (
-                "This assistant is strict MITRE RAG only. Ask questions about "
-                "MITRE ATT&CK techniques, tactics, threat groups, malware, tools, "
-                "detections, or mitigations."
-            )
+            "error": "I only answer questions about MITRE ATT&CK. Please ask about techniques (T1234), threat groups (APT28), malware, detections, or mitigations from the knowledge base.",
         }), 400
 
-    # Rewrite every input into cybersecurity context before retrieval or generation.
     question_for_llm = _force_cyber_context(question)
     retrieval_query = _expand_query_for_retrieval(question_for_llm)
 
     try:
-        scored_results = _retrieve_with_relevance(retrieval_query, k=4)
-        
-        source_docs = [doc for doc, _ in scored_results] if scored_results else []
+        ranked_results = _hybrid_retrieve(retrieval_query, dense_k=8, lexical_k=8, final_k=4)
+        source_docs = [item["doc"] for item in ranked_results] if ranked_results else []
 
-        # Strict entity grounding helpers.
         allow_low_score = False
         technique_match = re.search(r"\b(T\d{4}(?:\.\d{3})?)\b", question.upper())
         if technique_match:
@@ -337,7 +787,7 @@ def chat():
             if t_id in attack_id_map:
                 allow_low_score = True
                 exact = attack_id_map[t_id]
-                exact_doc = type(source_docs[0])(
+                exact_doc = Document(
                     page_content=exact["content"],
                     metadata={
                         "name": exact["name"],
@@ -345,17 +795,15 @@ def chat():
                         "url": exact.get("url", ""),
                     },
                 )
-                # Put exact technique context first so generation is anchored.
                 source_docs = [exact_doc] + source_docs
 
         apt_matches = re.findall(r"\bAPT\s*\d+\b", question.upper())
         if apt_matches:
             normalized_targets = {_normalize(a) for a in apt_matches}
-            # If exact APT exists in local MITRE document, inject it first.
             for target in normalized_targets:
                 if target.upper() in intrusion_set_map:
                     exact = intrusion_set_map[target.upper()]
-                    exact_doc = type(source_docs[0])(
+                    exact_doc = Document(
                         page_content=exact["content"],
                         metadata={
                             "name": exact["name"],
@@ -370,17 +818,25 @@ def chat():
             if any(_normalize(d.metadata.get("name", "")) in normalized_targets for d in source_docs):
                 allow_low_score = True
 
-        # Relevance gate to keep responses strictly grounded in MITRE context.
-        best_score = None
-        if scored_results and scored_results[0][1] is not None:
-            best_score = scored_results[0][1]
-            # We no longer block on low relevance scores so that greetings and 
-            # general cyber questions can be handled by the LLM natively.
-            # But if the score is very low, we drop the context to avoid confusing the LLM.
-            is_entity_query = bool(re.fullmatch(r"(?i)\s*(apt\s*\d+|t\d{4}(?:\.\d{3})?)\s*", question.strip()))
-            threshold = 0.18 if is_entity_query else MIN_RELEVANCE_SCORE
-            if best_score < threshold and not allow_low_score:
-                source_docs = [] # Clear context, let the LLM use general knowledge/greetings
+        top_dense_score = ranked_results[0].get("dense_score", 0.0) if ranked_results else 0.0
+        is_entity_query = bool(re.fullmatch(r"(?i)\s*(apt\s*\d+|t\d{4}(?:\.\d{3})?)\s*", question.strip()))
+        
+        # Treat multi-word queries (like threat actor names, malware, tools) as entity queries with lower threshold
+        words = question.strip().split()
+        looks_like_entity = len(words) >= 1 and not any(
+            question.lower().startswith(w) for w in {"what", "how", "why", "tell", "where", "when", "which"}
+        )
+        
+        threshold = 0.18 if (is_entity_query or looks_like_entity) else MIN_RELEVANCE_SCORE
+        if top_dense_score < threshold and not allow_low_score:
+            source_docs = []
+
+        confidence_meta = _compute_confidence(
+            question=question,
+            source_docs=source_docs,
+            ranked_items=ranked_results,
+            force_allow=allow_low_score,
+        )
 
         sources = [
             {
@@ -392,25 +848,39 @@ def chat():
             for d in source_docs
         ]
         context_text = "\n\n".join(d.page_content for d in source_docs)
+        owasp_refs = _get_owasp_refs(question)
         
         def generate():
             yield f"data: {json.dumps({'sources': sources})}\n\n"
+            yield f"data: {json.dumps({'owasp_refs': owasp_refs})}\n\n"
+            yield f"data: {json.dumps({'retrieval': {'mode': 'hybrid_dense_lexical', **confidence_meta}})}\n\n"
+
+            if not source_docs or confidence_meta["abstain"]:
+                abstain_reason = confidence_meta["reasons"][-1] if confidence_meta["reasons"] else "Low retrieval confidence."
+                yield f"data: {json.dumps({'chunk': f'I cannot answer this with enough confidence from the available MITRE ATT&CK sources ({abstain_reason}). Please ask a more specific MITRE technique, tactic, group, malware, tool, detection, or mitigation question.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             
             full_answer = ""
-            # Stream the response instead of blocking for the whole answer
             for chunk in chain.stream({"question": question_for_llm, "context": context_text}):
-                # Light filter for think tags in case deepseek is used
                 if "<think>" in chunk or "</think>" in chunk:
                     continue
                 full_answer += chunk
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                # Convert markdown to HTML before sending
+                html_chunk = _convert_markdown_to_html(chunk)
+                yield f"data: {json.dumps({'chunk': html_chunk})}\n\n"
 
-            # Fallback if empty
             if not full_answer.strip():
                 yield f"data: {json.dumps({'chunk': 'I could not generate an answer.'})}\n\n"
 
             chat_history.append(HumanMessage(content=question))
             chat_history.append(AIMessage(content=full_answer.strip()))
+            _save_chat_history(
+                question=question,
+                answer=full_answer.strip(),
+                sources=sources,
+                retrieval_meta={"mode": "hybrid_dense_lexical", **confidence_meta},
+            )
             yield "data: [DONE]\n\n"
             
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -425,7 +895,18 @@ def chat():
 def reset():
     global chat_history
     chat_history = []
+    if mongo_collection is not None:
+        try:
+            mongo_collection.delete_many({})
+        except PyMongoError as e:
+            print(f"MongoDB reset failed ({e})")
     return jsonify({"status": "reset"})
+
+
+@app.route("/api/history")
+def get_history():
+    messages = _load_chat_history(limit=25)
+    return jsonify({"messages": messages, "enabled": mongo_collection is not None})
 
 
 @app.route("/api/status")
@@ -434,11 +915,17 @@ def status():
     return jsonify({
         "mode": llm_mode,
         "model": GROQ_MODEL,
+        "retrieval": "hybrid_dense_lexical",
+        "history": "mongodb" if mongo_collection is not None else "in-memory",
         "ready": chain is not None,
     })
 
 
 if __name__ == "__main__":
-    load_chain()
+    ensure_startup()
     print(f"Starting server -> http://localhost:5000  (mode: {llm_mode})")
     app.run(debug=False, port=5000)
+
+
+# Ensure startup also runs when served by WSGI servers like gunicorn.
+ensure_startup()
