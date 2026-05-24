@@ -5,7 +5,7 @@ services:
     plan: free
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn backend:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
+    startCommand: OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 gunicorn backend:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120
     envVars:
       - key: GROQ_API_KEY
         sync: false
