@@ -428,3 +428,215 @@ textarea:disabled {
     min-height: 68vh;
   }
 }
+
+/* --- Nav Menu --- */
+.nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+  text-align: left;
+}
+.nav-item:hover {
+  background: #141e22;
+  color: var(--ink);
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.nav-item svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+/* --- Vulnerability Intelligence --- */
+.vuln-container {
+  padding: 32px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: 100%;
+}
+.vuln-header h2 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.8rem;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vuln-header p {
+  color: var(--muted);
+  margin: 0;
+}
+.vuln-search-card {
+  background: #0f171b;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 24px;
+}
+.vuln-search-card h3 {
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+}
+.vuln-search-card p {
+  color: var(--muted);
+  margin: 0 0 16px 0;
+}
+.vuln-search-box {
+  display: flex;
+  gap: 12px;
+}
+.vuln-search-box input {
+  flex: 1;
+  background: #141e22;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+.vuln-search-box input:focus {
+  border-color: var(--accent);
+}
+.vuln-search-box button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0 24px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.vuln-search-box button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.vuln-search-box button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vuln-result-card {
+  background: #0f171b;
+  border: 1px solid var(--danger);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 0 40px rgba(255, 109, 109, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  position: relative;
+}
+.vuln-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 32px;
+}
+.vuln-title-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.vuln-title-group h2 {
+  margin: 0;
+  font-size: 2.2rem;
+  font-family: "Space Grotesk", sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vuln-title-group h2 svg {
+  color: var(--danger);
+  width: 28px;
+  height: 28px;
+}
+.severity-badge {
+  background: #2a1111;
+  color: var(--danger);
+  border: 1px solid rgba(255, 109, 109, 0.4);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cvss-gauge {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid var(--danger);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.cvss-gauge span {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.vuln-details {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 40px;
+}
+.vuln-section h4 {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vuln-section p {
+  margin: 0;
+  line-height: 1.7;
+  color: #c9d6d0;
+}
+.remediation-box {
+  background: #141e22;
+  border: 1px solid var(--panel-border);
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  color: #c9d6d0;
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .vuln-details {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}

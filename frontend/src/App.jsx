@@ -1,5 +1,45 @@
 import { useEffect, useRef, useState } from "react";
 
+// SVGs for nav
+const ChatIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+  </svg>
+);
+
+const ShieldIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
+
+const BugIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="8" y="6" width="8" height="14" rx="4"></rect>
+    <path d="M12 2v4"></path>
+    <path d="M6 10h2"></path>
+    <path d="M16 10h2"></path>
+    <path d="M6 14h2"></path>
+    <path d="M16 14h2"></path>
+    <path d="M6 18h2"></path>
+    <path d="M16 18h2"></path>
+  </svg>
+);
+
+const HistoryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="12 8 12 12 14 14"></polyline>
+    <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"></path>
+  </svg>
+);
+
 const initialMessage = {
   id: crypto.randomUUID(),
   role: "assistant",
@@ -52,22 +92,19 @@ function summarize(text, maxLength = 96) {
 
 function buildHistoryItems(messages) {
   const entries = [];
-
   for (let index = 0; index < messages.length; index += 2) {
     const userMessage = messages[index];
     const assistantMessage = messages[index + 1];
-
     if (!userMessage || userMessage.role !== "user") continue;
-
     entries.push({
       id: `${userMessage.id}-${assistantMessage?.id || index}`,
       question: userMessage.content || "",
       answer: assistantMessage?.content || "",
       sources: assistantMessage?.sources || [],
-      retrieval: assistantMessage?.retrieval || null
+      retrieval: assistantMessage?.retrieval || null,
+      fullConversation: messages.slice(0, index + 2)
     });
   }
-
   return entries.slice(-5).reverse();
 }
 
@@ -77,7 +114,7 @@ function Message({ message }) {
       <div className="avatar">{message.role === "user" ? "You" : "CTI"}</div>
       <div className="bubble">
         <p dangerouslySetInnerHTML={{ __html: message.content || "..." }}></p>
-
+        
         {message.retrieval && (
           <div className="retrieval-meta">
             <strong>Confidence:</strong> {Math.round((message.retrieval.confidence || 0) * 100)}%
@@ -137,7 +174,91 @@ function Message({ message }) {
   );
 }
 
+function VulnerabilityIntelligence() {
+  const [cveInput, setCveInput] = useState("");
+  const [cveData, setCveData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleScan = async () => {
+    if (!cveInput.trim()) return;
+    setLoading(true);
+    setError("");
+    setCveData(null);
+    try {
+      const response = await fetch(buildApiUrl(`/api/cve/${cveInput.trim().toUpperCase()}`));
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Failed to fetch CVE data.");
+      }
+      const data = await response.json();
+      setCveData(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="vuln-container">
+      <div className="vuln-header">
+        <h2><ShieldIcon /> Vulnerability Intelligence</h2>
+        <p>Retrieve detailed threat intelligence, CVSS scoring, and mitigations.</p>
+      </div>
+
+      <div className="vuln-search-card">
+        <h3>CVE Database Query</h3>
+        <p>Enter a valid CVE identifier (e.g., CVE-2024-3400) to scan the database.</p>
+        <div className="vuln-search-box">
+          <input 
+            type="text" 
+            placeholder="CVE-2024-3400" 
+            value={cveInput}
+            onChange={(e) => setCveInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleScan()}
+          />
+          <button onClick={handleScan} disabled={loading || !cveInput.trim()}>
+            {loading ? "Scanning..." : "Scan Database"}
+          </button>
+        </div>
+        {error && <p className="error" style={{marginTop: "12px", padding: 0}}>{error}</p>}
+      </div>
+
+      {cveData && (
+        <div className="vuln-result-card">
+          <div className="vuln-result-header">
+            <div className="vuln-title-group">
+              <h2><BugIcon /> {cveData.id}</h2>
+              <span className="severity-badge">{cveData.severity} SEVERITY</span>
+            </div>
+            <div className="cvss-gauge">
+              {cveData.cvss ? cveData.cvss.toFixed(1) : "N/A"}
+              <span>CVSS</span>
+            </div>
+          </div>
+          
+          <div className="vuln-details">
+            <div className="vuln-section">
+              <h4>VULNERABILITY DESCRIPTION</h4>
+              <p>{cveData.description}</p>
+            </div>
+            <div className="vuln-section">
+              <h4>REMEDIATION</h4>
+              <div className="remediation-box">
+                {cveData.remediation}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState("chat"); // 'chat' or 'vulnerabilities'
+  
   const [messages, setMessages] = useState([initialMessage]);
   const [historyMessages, setHistoryMessages] = useState([]);
   const [question, setQuestion] = useState("");
@@ -148,65 +269,58 @@ export default function App() {
   const abortControllerRef = useRef(null);
   const bottomRef = useRef(null);
 
+  const saveHistoryToLocal = (msgs) => {
+    try {
+      localStorage.setItem("cti_chat_history", JSON.stringify(msgs));
+      setHistoryMessages(buildHistoryItems(msgs));
+    } catch (e) {
+      console.error("Failed to save history", e);
+    }
+  };
+
   const loadHistory = async () => {
     try {
-      const historyRes = await fetch(buildApiUrl("/api/history"));
-      const historyData = await historyRes.json().catch(() => ({ messages: [] }));
-
-      if (Array.isArray(historyData.messages) && historyData.messages.length > 0) {
-        setHistoryMessages(buildHistoryItems(historyData.messages));
-        if (messages.length <= 1) {
-          setMessages(historyData.messages);
+      const stored = localStorage.getItem("cti_chat_history");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (messages.length <= 1) {
+            setMessages(parsed);
+          }
+          setHistoryMessages(buildHistoryItems(parsed));
         }
-      } else {
-        setHistoryMessages([]);
       }
     } catch {
       setHistoryMessages([]);
     }
   };
 
-  const loadHistoryConversation = (question) => {
-    try {
-      const historyRes = fetch(buildApiUrl("/api/history"));
-      historyRes
-        .then((res) => res.json())
-        .then((data) => {
-          if (Array.isArray(data.messages) && data.messages.length > 0) {
-            setMessages(data.messages);
-          }
-        })
-        .catch(() => {
-          setErrorText("Could not load conversation history.");
-        });
-    } catch {
-      setErrorText("Error loading conversation.");
-    }
+  const loadHistoryConversation = (msgs) => {
+    setMessages(msgs);
   };
 
   useEffect(() => {
     const bootstrap = async () => {
       try {
         const statusRes = await fetch(buildApiUrl("/api/status"));
-
         const data = await statusRes.json();
         setStatus({
           text: data.ready ? "Online - Groq Cloud" : "Connecting...",
           model: data.model || "Groq"
         });
-
         await loadHistory();
       } catch {
         setStatus({ text: "Backend unavailable", model: "unknown" });
       }
     };
-
     bootstrap();
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming]);
+    if (activeTab === "chat") {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isStreaming, activeTab]);
 
   const stopStreaming = () => {
     if (!isStreaming) return;
@@ -222,6 +336,7 @@ export default function App() {
       // Keep UI reset even if backend reset fails.
     }
     setMessages([initialMessage]);
+    localStorage.removeItem("cti_chat_history");
     setHistoryMessages([]);
     setErrorText("");
   };
@@ -244,8 +359,8 @@ export default function App() {
     };
 
     const assistantMessageId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
+    let updatedMessages = [
+      ...messages,
       userMessage,
       {
         id: assistantMessageId,
@@ -255,7 +370,8 @@ export default function App() {
         owaspRefs: [],
         retrieval: null
       }
-    ]);
+    ];
+    setMessages(updatedMessages);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -319,52 +435,50 @@ export default function App() {
             if (parsed.retrieval) retrieval = parsed.retrieval;
             if (parsed.chunk) fullText += parsed.chunk;
 
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId
-                  ? {
-                      ...msg,
-                      content: fullText,
-                      sources,
-                      owaspRefs,
-                      retrieval
-                    }
-                  : msg
-              )
+            updatedMessages = updatedMessages.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    content: fullText,
+                    sources,
+                    owaspRefs,
+                    retrieval
+                  }
+                : msg
             );
+            setMessages(updatedMessages);
           }
-
           boundary = buffer.indexOf("\n\n");
         }
       }
 
       if (!fullText.trim()) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? {
-                  ...msg,
-                  content: "I could not generate an answer.",
-                  sources,
-                  owaspRefs,
-                  retrieval
-                }
-              : msg
-          )
+        updatedMessages = updatedMessages.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: "I could not generate an answer.",
+                sources,
+                owaspRefs,
+                retrieval
+              }
+            : msg
         );
+        setMessages(updatedMessages);
       }
+      
+      saveHistoryToLocal(updatedMessages);
 
-      await loadHistory();
     } catch (error) {
       if (error.name !== "AbortError") {
         setErrorText(error.message || "Unexpected error occurred.");
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: `Error: ${error.message || "Request failed."}` }
-              : msg
-          )
+        updatedMessages = updatedMessages.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: `Error: ${error.message || "Request failed."}` }
+            : msg
         );
+        setMessages(updatedMessages);
+        saveHistoryToLocal(updatedMessages);
       }
     } finally {
       setIsStreaming(false);
@@ -380,111 +494,136 @@ export default function App() {
           <h1>CTI RAG</h1>
         </div>
 
-        <section className="side-block status">
-          <h2>Status</h2>
-          <p>{status.text}</p>
-          <p className="muted">Model: {status.model}</p>
-        </section>
+        <nav className="nav-menu">
+          <button 
+            className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveTab('chat')}
+          >
+            <ChatIcon /> Threat Intelligence
+          </button>
+          <button 
+            className={`nav-item ${activeTab === 'vulnerabilities' ? 'active' : ''}`}
+            onClick={() => setActiveTab('vulnerabilities')}
+          >
+            <ShieldIcon /> Vulnerability Intelligence
+          </button>
+        </nav>
 
-        <section className="side-block">
-          <h2>Suggestions</h2>
-          <div className="stack">
-            {suggestions.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className="chip"
-                onClick={() => sendMessage(item)}
-                disabled={isStreaming}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </section>
+        {activeTab === 'chat' && (
+          <>
+            <section className="side-block status">
+              <h2>Status</h2>
+              <p>{status.text}</p>
+              <p className="muted">Model: {status.model}</p>
+            </section>
 
-        <section className="side-block">
-          <h2>OWASP References</h2>
-          <div className="stack">
-            {owaspLinks.map((link) => (
-              <a key={link.title} href={link.url} target="_blank" rel="noreferrer noopener">
-                {link.title}
-              </a>
-            ))}
-          </div>
-        </section>
+            <section className="side-block">
+              <h2>Suggestions</h2>
+              <div className="stack">
+                {suggestions.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="chip"
+                    onClick={() => sendMessage(item)}
+                    disabled={isStreaming}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        <section className="side-block history-panel">
-          <h2>Recent Chat History</h2>
-          {historyMessages.length > 0 ? (
-            <div className="history-list">
-              {historyMessages.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="history-item"
-                  onClick={() => loadHistoryConversation(item.question)}
-                  title="Click to load this conversation"
-                >
-                  <p className="history-question">{summarize(item.question, 110)}</p>
-                  <p className="history-answer">{summarize(item.answer, 140) || "No answer saved yet."}</p>
-                  <p className="history-meta">
-                    {item.sources.length} source{item.sources.length === 1 ? "" : "s"}
-                    {item.retrieval?.confidence != null ? ` · ${Math.round((item.retrieval.confidence || 0) * 100)}% confidence` : ""}
-                  </p>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">No saved MongoDB history yet.</p>
-          )}
-        </section>
+            <section className="side-block">
+              <h2>OWASP References</h2>
+              <div className="stack">
+                {owaspLinks.map((link) => (
+                  <a key={link.title} href={link.url} target="_blank" rel="noreferrer noopener">
+                    {link.title}
+                  </a>
+                ))}
+              </div>
+            </section>
 
-        <button type="button" className="reset" onClick={resetChat} disabled={isStreaming}>
-          New Chat
-        </button>
+            <section className="side-block history-panel">
+              <h2><HistoryIcon /> Recent History (Local)</h2>
+              {historyMessages.length > 0 ? (
+                <div className="history-list">
+                  {historyMessages.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="history-item"
+                      onClick={() => loadHistoryConversation(item.fullConversation)}
+                      title="Click to load this conversation"
+                    >
+                      <p className="history-question">{summarize(item.question, 110)}</p>
+                      <p className="history-answer">{summarize(item.answer, 140) || "No answer saved yet."}</p>
+                      <p className="history-meta">
+                        {item.sources.length} source{item.sources.length === 1 ? "" : "s"}
+                        {item.retrieval?.confidence != null ? ` · ${Math.round((item.retrieval.confidence || 0) * 100)}% confidence` : ""}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No saved local history yet.</p>
+              )}
+            </section>
+
+            <button type="button" className="reset" onClick={resetChat} disabled={isStreaming}>
+              New Chat
+            </button>
+          </>
+        )}
       </aside>
 
       <main className="chat-shell">
-        <header className="header">
-          <h2>Cyber Threat Intelligence Assistant</h2>
-          <p>Grounded responses from MITRE ATT&CK with OWASP guidance.</p>
-        </header>
+        {activeTab === 'vulnerabilities' ? (
+          <VulnerabilityIntelligence />
+        ) : (
+          <>
+            <header className="header">
+              <h2>Cyber Threat Intelligence Assistant</h2>
+              <p>Grounded responses from MITRE ATT&CK with OWASP guidance.</p>
+            </header>
 
-        <section className="messages" aria-live="polite">
-          {messages.map((message) => (
-            <Message key={message.id} message={message} />
-          ))}
-          {isStreaming && <div className="typing">Streaming response...</div>}
-          <div ref={bottomRef} />
-        </section>
+            <section className="messages" aria-live="polite">
+              {messages.map((message) => (
+                <Message key={message.id} message={message} />
+              ))}
+              {isStreaming && <div className="typing">Streaming response...</div>}
+              <div ref={bottomRef} />
+            </section>
 
-        <footer className="composer">
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Ask about a threat, technique, or mitigation..."
-            rows={1}
-            disabled={isStreaming}
-          />
+            <footer className="composer">
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="Ask about a threat, technique, or mitigation..."
+                rows={1}
+                disabled={isStreaming}
+              />
 
-          <div className="actions">
-            <button type="button" onClick={stopStreaming} disabled={!isStreaming}>
-              Stop
-            </button>
-            <button type="button" onClick={() => sendMessage()} disabled={isStreaming || !question.trim()}>
-              Send
-            </button>
-          </div>
-        </footer>
+              <div className="actions">
+                <button type="button" onClick={stopStreaming} disabled={!isStreaming}>
+                  Stop
+                </button>
+                <button type="button" onClick={() => sendMessage()} disabled={isStreaming || !question.trim()}>
+                  Send
+                </button>
+              </div>
+            </footer>
 
-        {errorText ? <p className="error">{errorText}</p> : null}
+            {errorText ? <p className="error">{errorText}</p> : null}
+          </>
+        )}
       </main>
     </div>
   );

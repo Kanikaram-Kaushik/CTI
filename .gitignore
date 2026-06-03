@@ -32,10 +32,44 @@ data/
 .DS_Store
 Thumbs.db
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+# dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables (SENSITIVE - never commit API keys!)
+.env
+
+# FAISS index (large binary files - regenerate with ingest.py)
+faiss_index/
+cti_rag_chatbot/faiss_index/
+
+# Data files (large)
+data/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
 # IDE
 .vscode/
 .idea/
 *.swp
 
 # Exclude local unwanted folder
-unwanted/
+frontend/node_modules/

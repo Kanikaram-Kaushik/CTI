@@ -15,13 +15,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
-
-try:
-    from pymongo import MongoClient
-    from pymongo.errors import PyMongoError
-except ImportError:
-    MongoClient = None
-    PyMongoError = Exception
+import requests
 
 load_dotenv()
 
@@ -32,9 +26,6 @@ EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
 FAISS_PATH      = os.path.join(BASE_DIR, "faiss_index")
 FRONTEND_DIST   = os.path.join(BASE_DIR, "frontend", "dist")
-MONGODB_URI     = os.getenv("MONGODB_URI", "")
-MONGODB_DB      = os.getenv("MONGODB_DB", "anti_rtrp")
-MONGODB_COL     = os.getenv("MONGODB_COLLECTION", "chat_history")
 
 app = Flask(
     __name__,
@@ -50,8 +41,6 @@ llm_mode     = "groq"
 vector_store = None
 attack_id_map = {}
 intrusion_set_map = {}
-mongo_client = None
-mongo_collection = None
 _startup_lock = threading.Lock()
 _startup_done = False
 
@@ -142,95 +131,6 @@ def _get_owasp_refs(question):
 
     return refs[:4]
 
-
-def _init_mongo():
-    """
-    Initialize a shared MongoDB client once for this long-running Flask process.
-
-    Assumption: traditional long-running server deployment (not serverless).
-    Defaults are used unless env vars are provided.
-    """
-    global mongo_client, mongo_collection
-
-    if MongoClient is None:
-        print("MongoDB disabled: pymongo is not installed in the active Python environment.")
-        return False
-
-    if not MONGODB_URI:
-        print("MongoDB disabled: MONGODB_URI not set.")
-        return False
-
-    try:
-        mongo_client = MongoClient(MONGODB_URI, appname="anti-rtrp-chat")
-        mongo_client.admin.command("ping")
-        db = mongo_client[MONGODB_DB]
-        mongo_collection = db[MONGODB_COL]
-        mongo_collection.create_index("created_at")
-        print(f"MongoDB chat history enabled -> db='{MONGODB_DB}' collection='{MONGODB_COL}'")
-        return True
-    except PyMongoError as e:
-        print(f"MongoDB unavailable ({e})")
-        mongo_client = None
-        mongo_collection = None
-        return False
-
-
-def _save_chat_history(question, answer, sources, retrieval_meta):
-    """Persist one user-assistant exchange in MongoDB if enabled."""
-    if mongo_collection is None:
-        return
-
-    try:
-        mongo_collection.insert_one(
-            {
-                "question": question,
-                "answer": answer,
-                "sources": sources,
-                "retrieval": retrieval_meta,
-                "created_at": datetime.now(timezone.utc),
-                "model": GROQ_MODEL,
-            }
-        )
-    except PyMongoError as e:
-        print(f"MongoDB insert failed ({e})")
-
-
-def _load_chat_history(limit=25):
-    """Load recent persisted exchanges and return frontend-ready message objects."""
-    if mongo_collection is None:
-        return []
-
-    try:
-        rows = list(mongo_collection.find({}, {"_id": 0}).sort("created_at", -1).limit(limit))
-    except PyMongoError as e:
-        print(f"MongoDB read failed ({e})")
-        return []
-
-    rows.reverse()
-    messages = []
-    for row in rows:
-        messages.append(
-            {
-                "id": f"u-{len(messages)}",
-                "role": "user",
-                "content": row.get("question", ""),
-                "sources": [],
-                "owaspRefs": [],
-                "retrieval": None,
-            }
-        )
-        messages.append(
-            {
-                "id": f"a-{len(messages)}",
-                "role": "assistant",
-                "content": row.get("answer", ""),
-                "sources": row.get("sources", []),
-                "owaspRefs": [],
-                "retrieval": row.get("retrieval"),
-            }
-        )
-
-    return messages
 
 
 def _try_groq():
@@ -722,7 +622,6 @@ def ensure_startup():
     with _startup_lock:
         if _startup_done:
             return
-        _init_mongo()
         load_chain()
         _startup_done = True
 
@@ -875,12 +774,6 @@ def chat():
 
             chat_history.append(HumanMessage(content=question))
             chat_history.append(AIMessage(content=full_answer.strip()))
-            _save_chat_history(
-                question=question,
-                answer=full_answer.strip(),
-                sources=sources,
-                retrieval_meta={"mode": "hybrid_dense_lexical", **confidence_meta},
-            )
             yield "data: [DONE]\n\n"
             
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -895,18 +788,7 @@ def chat():
 def reset():
     global chat_history
     chat_history = []
-    if mongo_collection is not None:
-        try:
-            mongo_collection.delete_many({})
-        except PyMongoError as e:
-            print(f"MongoDB reset failed ({e})")
     return jsonify({"status": "reset"})
-
-
-@app.route("/api/history")
-def get_history():
-    messages = _load_chat_history(limit=25)
-    return jsonify({"messages": messages, "enabled": mongo_collection is not None})
 
 
 @app.route("/api/status")
@@ -916,9 +798,93 @@ def status():
         "mode": llm_mode,
         "model": GROQ_MODEL,
         "retrieval": "hybrid_dense_lexical",
-        "history": "mongodb" if mongo_collection is not None else "in-memory",
+        "history": "local-storage",
         "ready": chain is not None,
     })
+
+
+@app.route("/api/cve/<cve_id>", methods=["GET"])
+def get_cve(cve_id):
+    try:
+        # MITRE API is fast and doesn't require a key
+        url = f"https://cveawg.mitre.org/api/cve/{cve_id}"
+        resp = requests.get(url, timeout=10)
+        
+        if resp.status_code != 200:
+            # Fallback to NVD if MITRE fails or doesn't have it
+            nvd_url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
+            nvd_resp = requests.get(nvd_url, timeout=15)
+            if nvd_resp.status_code != 200:
+                return jsonify({"error": "CVE not found or API unavailable"}), 404
+            
+            nvd_data = nvd_resp.json()
+            if not nvd_data.get("vulnerabilities"):
+                return jsonify({"error": "CVE not found in NVD"}), 404
+                
+            cve_item = nvd_data["vulnerabilities"][0]["cve"]
+            descriptions = cve_item.get("descriptions", [])
+            desc = next((d["value"] for d in descriptions if d["lang"] == "en"), "No description available.")
+            
+            metrics = cve_item.get("metrics", {})
+            severity = "UNKNOWN"
+            score = 0.0
+            
+            if "cvssMetricV31" in metrics:
+                cvss_data = metrics["cvssMetricV31"][0]["cvssData"]
+                severity = cvss_data.get("baseSeverity", "UNKNOWN")
+                score = cvss_data.get("baseScore", 0.0)
+            elif "cvssMetricV30" in metrics:
+                cvss_data = metrics["cvssMetricV30"][0]["cvssData"]
+                severity = cvss_data.get("baseSeverity", "UNKNOWN")
+                score = cvss_data.get("baseScore", 0.0)
+            elif "cvssMetricV2" in metrics:
+                cvss_data = metrics["cvssMetricV2"][0]["cvssData"]
+                severity = metrics["cvssMetricV2"][0].get("baseSeverity", "UNKNOWN")
+                score = cvss_data.get("baseScore", 0.0)
+                
+            remediation = "Apply latest vendor patches. Monitor network traffic for anomalous behavior targeting this vulnerability."
+            
+            return jsonify({
+                "id": cve_id,
+                "description": desc,
+                "severity": severity,
+                "cvss": score,
+                "remediation": remediation,
+            })
+            
+        data = resp.json()
+        containers = data.get("containers", {})
+        cna = containers.get("cna", {})
+        
+        descriptions = cna.get("descriptions", [])
+        desc = next((d["value"] for d in descriptions if d["lang"] == "en"), "No description available.")
+        
+        metrics = cna.get("metrics", [])
+        severity = "UNKNOWN"
+        score = 0.0
+        
+        for metric in metrics:
+            if "cvssV3_1" in metric:
+                severity = metric["cvssV3_1"].get("baseSeverity", "UNKNOWN")
+                score = metric["cvssV3_1"].get("baseScore", 0.0)
+                break
+            elif "cvssV3_0" in metric:
+                severity = metric["cvssV3_0"].get("baseSeverity", "UNKNOWN")
+                score = metric["cvssV3_0"].get("baseScore", 0.0)
+                break
+
+        remediation = "Apply latest vendor patches. Monitor network traffic for anomalous behavior targeting this vulnerability."
+        
+        return jsonify({
+            "id": cve_id,
+            "description": desc,
+            "severity": severity.upper(),
+            "cvss": score,
+            "remediation": remediation,
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
