@@ -538,9 +538,9 @@ def load_chain():
 
     llm = _try_groq()
     if llm is None:
-        raise RuntimeError(
-            "No Groq LLM available. Set GROQ_API_KEY and ensure Groq is reachable."
-        )
+        print("✗ WARNING: No Groq LLM available. Set GROQ_API_KEY and ensure Groq is reachable.")
+        print("Backend will start, but chat will be disabled until LLM is configured.")
+        return
 
     print(f"Using Groq cloud LLM ({GROQ_MODEL}) [ok]")
 
