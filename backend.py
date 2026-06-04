@@ -46,9 +46,9 @@ _startup_done = False
 
 LOCAL_STIX_FILE = os.path.join(BASE_DIR, "data", "enterprise-attack.json")
 
-MIN_RELEVANCE_SCORE = 0.25
+MIN_RELEVANCE_SCORE = 0.15
 # Only answer when the retrieval confidence is strong enough to avoid guessing.
-ABSTAIN_CONFIDENCE_THRESHOLD = 0.60
+ABSTAIN_CONFIDENCE_THRESHOLD = 0.35
 
 hybrid_index_docs = []
 hybrid_term_freqs = []
@@ -163,63 +163,6 @@ def _is_offline():
     except OSError:
         return True
 
-
-def _is_cyber_request(question):
-    """Return True only when the user is asking about MITRE ATT&CK threat intelligence."""
-    q = question.strip().lower()
-    if not q:
-        return False
-
-    greeting_only = {
-        "hi",
-        "hello",
-        "hey",
-        "yo",
-        "hola",
-        "sup",
-        "good morning",
-        "good afternoon",
-        "good evening",
-    }
-    if q in greeting_only:
-        return False
-
-    # Strictly allow only MITRE ATT&CK and threat intelligence queries.
-    attack_pattern = r"\b(t\d{4}(?:\.\d{3})?|apt\s*\d+|mitre|att&ck)\b"
-    threat_keywords = {
-        "technique",
-        "tactic",
-        "group",
-        "intrusion set",
-        "malware",
-        "tool",
-        "attack pattern",
-        "detection",
-        "mitigation",
-        "adversary",
-        "threat actor",
-        "threat group",
-        "campaign",
-        "ransomware",
-        "vulnerability",
-        "cve",
-        "exploit",
-    }
-    
-    has_attack_indicator = bool(re.search(attack_pattern, q, re.I))
-    has_threat_keyword = any(keyword in q for keyword in threat_keywords)
-    
-    # Accept any substantive query (not pure question starters). This allows threat actor names, malware, tools, etc.
-    # Block only if it's purely a question word or very short non-cyber gibberish.
-    pure_question_starts = {"what", "how", "why", "can", "could", "would", "should", "is", "are", "am", "be", "being", "been"}
-    first_word = q.split()[0] if q.split() else ""
-    
-    # If it starts with a pure question word, require it to have threat keywords
-    if first_word in pure_question_starts:
-        return has_threat_keyword or has_attack_indicator
-    
-    # Otherwise, accept it (it's likely a threat actor/tool/malware name or domain-specific query)
-    return len(q) > 2  # Just ensure it's not too short
 
 
 
@@ -655,10 +598,7 @@ def chat():
     if not question:
         return jsonify({"error": "Question cannot be empty."}), 400
 
-    if not _is_cyber_request(question):
-        return jsonify({
-            "error": "I only answer questions about MITRE ATT&CK. Please ask about techniques (T1234), threat groups (APT28), malware, detections, or mitigations from the knowledge base.",
-        }), 400
+
 
     question_for_llm = question
     retrieval_query = _expand_query_for_retrieval(question)
@@ -706,15 +646,7 @@ def chat():
                 allow_low_score = True
 
         top_dense_score = ranked_results[0].get("dense_score", 0.0) if ranked_results else 0.0
-        is_entity_query = bool(re.fullmatch(r"(?i)\s*(apt\s*\d+|t\d{4}(?:\.\d{3})?)\s*", question.strip()))
-        
-        # Treat multi-word queries (like threat actor names, malware, tools) as entity queries with lower threshold
-        words = question.strip().split()
-        looks_like_entity = len(words) >= 1 and not any(
-            question.lower().startswith(w) for w in {"what", "how", "why", "tell", "where", "when", "which"}
-        )
-        
-        threshold = 0.18 if (is_entity_query or looks_like_entity) else MIN_RELEVANCE_SCORE
+        threshold = 0.15
         if top_dense_score < threshold and not allow_low_score:
             source_docs = []
 
