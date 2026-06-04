@@ -512,7 +512,21 @@ def load_chain():
             print("   python download_embedding_model.py")
             print("="*70)
         raise
-    
+    faiss_file = os.path.join(FAISS_PATH, "index.faiss")
+    if os.path.exists(faiss_file) and os.path.getsize(faiss_file) < 1000:
+        print("Detected Git LFS pointers for FAISS. Downloading actual binaries...")
+        import requests
+        base_url = "https://huggingface.co/spaces/Kaushik-17/CTI_RAG_chatbot/resolve/main/faiss_index/"
+        try:
+            for fname in ["index.faiss", "index.pkl"]:
+                resp = requests.get(base_url + fname)
+                resp.raise_for_status()
+                with open(os.path.join(FAISS_PATH, fname), "wb") as f:
+                    f.write(resp.content)
+            print("Successfully downloaded FAISS binaries.")
+        except Exception as e:
+            print(f"Warning: Failed to download FAISS binaries: {e}")
+
     vector_store = FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever    = vector_store.as_retriever(search_kwargs={"k": 5})
     _build_hybrid_index()
