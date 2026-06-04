@@ -496,28 +496,28 @@ def load_chain():
             cache_folder=cache_dir,
             show_progress=True,
         )
-    except Exception as e:
-        print(f"\n✗ ERROR: Failed to load embedding model '{EMBEDDING_MODEL}'")
-        print(f"Details: {e}")
-        raise
-    faiss_file = os.path.join(FAISS_PATH, "index.faiss")
-    if os.path.exists(faiss_file) and os.path.getsize(faiss_file) < 1000:
-        print("Detected Git LFS pointers for FAISS. Downloading actual binaries...")
-        import requests
-        base_url = "https://huggingface.co/spaces/Kaushik-17/CTI_RAG_chatbot/resolve/main/faiss_index/"
-        try:
-            for fname in ["index.faiss", "index.pkl"]:
-                resp = requests.get(base_url + fname)
-                resp.raise_for_status()
-                with open(os.path.join(FAISS_PATH, fname), "wb") as f:
-                    f.write(resp.content)
-            print("Successfully downloaded FAISS binaries.")
-        except Exception as e:
-            print(f"Warning: Failed to download FAISS binaries: {e}")
+        
+        faiss_file = os.path.join(FAISS_PATH, "index.faiss")
+        if os.path.exists(faiss_file) and os.path.getsize(faiss_file) < 1000:
+            print("Detected Git LFS pointers for FAISS. Downloading actual binaries...")
+            import requests
+            base_url = "https://huggingface.co/spaces/Kaushik-17/CTI_RAG_chatbot/resolve/main/faiss_index/"
+            try:
+                for fname in ["index.faiss", "index.pkl"]:
+                    resp = requests.get(base_url + fname)
+                    resp.raise_for_status()
+                    with open(os.path.join(FAISS_PATH, fname), "wb") as f:
+                        f.write(resp.content)
+                print("Successfully downloaded FAISS binaries.")
+            except Exception as e:
+                print(f"Warning: Failed to download FAISS binaries: {e}")
 
-    vector_store = FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
-    retriever    = vector_store.as_retriever(search_kwargs={"k": 5})
-    _build_hybrid_index()
+        vector_store = FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
+        retriever    = vector_store.as_retriever(search_kwargs={"k": 5})
+        _build_hybrid_index()
+    except Exception as e:
+        print(f"\n✗ WARNING: Failed to load embeddings or FAISS index: {e}")
+        print("Backend will continue to run, but retrieval may be degraded or disabled.")
     if not os.path.exists(LOCAL_STIX_FILE):
         print("Downloading MITRE ATT&CK STIX data...")
         os.makedirs(os.path.dirname(LOCAL_STIX_FILE), exist_ok=True)
