@@ -222,18 +222,6 @@ def _is_cyber_request(question):
     return len(q) > 2  # Just ensure it's not too short
 
 
-def _force_cyber_context(question):
-    """Convert any input into a cybersecurity-only query."""
-    q = question.strip()
-    if not q:
-        q = "general query"
-    return (
-        "Answer strictly in cybersecurity context only. "
-        f"Treat the user input '{q}' as a cyber threat, attack pattern, intrusion set, or defensive-control prompt. "
-        "Do not answer literally, do not do math, do not render HTML, and do not leave the cyber domain. "
-        "Focus on MITRE ATT&CK techniques, adversary behavior, detections, mitigations, or incident-response implications."
-    )
-
 
 def _tokenize(text):
     return re.findall(r"[a-z0-9]+", text.lower())
@@ -602,8 +590,8 @@ def load_chain():
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "You are a strict cybersecurity-only assistant.\n"
-         "1. Every user input must be interpreted only through the lens of cyberattacks, defenses, MITRE ATT&CK, incident response, or threat analysis.\n"
-         "2. If the user asks for math, HTML, code, numbers, or unrelated content, reinterpret it as a cybersecurity question instead of answering literally.\n"
+         "1. Answer the user's question using ONLY the provided Retrieved Context.\n"
+         "2. If the answer cannot be found in the context, do not guess or make up information. Instead, state that you do not have enough information to answer.\n"
          "3. Keep the response clear, concise, and helpful.\n\n"
          "Retrieved Context:\n{context}"),
         ("human", "Question: {question}"),
@@ -672,8 +660,8 @@ def chat():
             "error": "I only answer questions about MITRE ATT&CK. Please ask about techniques (T1234), threat groups (APT28), malware, detections, or mitigations from the knowledge base.",
         }), 400
 
-    question_for_llm = _force_cyber_context(question)
-    retrieval_query = _expand_query_for_retrieval(question_for_llm)
+    question_for_llm = question
+    retrieval_query = _expand_query_for_retrieval(question)
 
     try:
         ranked_results = _hybrid_retrieve(retrieval_query, dense_k=8, lexical_k=8, final_k=4)
