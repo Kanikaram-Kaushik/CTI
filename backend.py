@@ -488,13 +488,8 @@ def load_chain():
     global retriever, chain, llm_mode, vector_store, attack_id_map, intrusion_set_map
     print("Loading FAISS index...")
 
-    is_offline = _is_offline()
     cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
     
-    if is_offline:
-        os.environ["HF_HUB_OFFLINE"] = "1"
-        print("Network unavailable — using cached embedding model.")
-
     try:
         embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL,
@@ -504,13 +499,6 @@ def load_chain():
     except Exception as e:
         print(f"\n✗ ERROR: Failed to load embedding model '{EMBEDDING_MODEL}'")
         print(f"Details: {e}")
-        if is_offline:
-            print("\n" + "="*70)
-            print("OFFLINE MODE REQUIRES CACHED MODEL")
-            print("="*70)
-            print("The model must be downloaded while online:")
-            print("   python download_embedding_model.py")
-            print("="*70)
         raise
     faiss_file = os.path.join(FAISS_PATH, "index.faiss")
     if os.path.exists(faiss_file) and os.path.getsize(faiss_file) < 1000:
