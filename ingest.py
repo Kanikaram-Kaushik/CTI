@@ -110,3 +110,5 @@ if __name__ == "__main__":
         print("\n✓ Ingestion complete! Your app now has the MITRE ATT&CK data.")
     else:
         print("\n✗ No documents found to process.")
+        import sys
+        sys.exit(1)

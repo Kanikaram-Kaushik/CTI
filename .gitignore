@@ -18,9 +18,9 @@ env/
 # Environment variables (SENSITIVE - never commit API keys!)
 .env
 
-# FAISS index (large binary files - regenerate with ingest.py)
-faiss_index/
-cti_rag_chatbot/faiss_index/
+# FAISS index
+# faiss_index/
+# cti_rag_chatbot/faiss_index/
 
 # Data files (large)
 data/
@@ -52,9 +52,9 @@ env/
 # Environment variables (SENSITIVE - never commit API keys!)
 .env
 
-# FAISS index (large binary files - regenerate with ingest.py)
-faiss_index/
-cti_rag_chatbot/faiss_index/
+# FAISS index
+# faiss_index/
+# cti_rag_chatbot/faiss_index/
 
 # Data files (large)
 data/
