@@ -516,6 +516,18 @@ def load_chain():
     vector_store = FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
     retriever    = vector_store.as_retriever(search_kwargs={"k": 5})
     _build_hybrid_index()
+    if not os.path.exists(LOCAL_STIX_FILE):
+        print("Downloading MITRE ATT&CK STIX data...")
+        os.makedirs(os.path.dirname(LOCAL_STIX_FILE), exist_ok=True)
+        try:
+            resp = requests.get("https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json", timeout=30)
+            resp.raise_for_status()
+            with open(LOCAL_STIX_FILE, "wb") as f:
+                f.write(resp.content)
+            print("Downloaded enterprise-attack.json successfully.")
+        except Exception as e:
+            print(f"Warning: Failed to download STIX data: {e}")
+
     attack_id_map = _load_attack_id_map()
     intrusion_set_map = _load_intrusion_set_map()
     print(f"Hybrid lexical chunks indexed: {len(hybrid_index_docs)}")
