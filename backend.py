@@ -16,6 +16,7 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 import requests
+import database
 
 load_dotenv()
 
@@ -34,7 +35,6 @@ app = Flask(
 )
 CORS(app)
 
-chat_history = []
 retriever    = None
 chain        = None
 llm_mode     = "groq"
@@ -543,7 +543,7 @@ def _normalize(s):
 
 
 def load_chain():
-    global retriever, chain, llm_mode, vector_store, attack_id_map, intrusion_set_map
+    global retriever, chain, llm_mode, vector_store, attack_id_map, intrusion_set_map, malware_map
     print("Loading FAISS index...")
 
     cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
@@ -610,7 +610,9 @@ def load_chain():
          "You are a strict cybersecurity-only assistant.\n"
          "1. Answer the user's question using ONLY the provided Retrieved Context.\n"
          "2. If the answer cannot be found in the context, do not guess or make up information. Instead, state that you do not have enough information to answer.\n"
-         "3. Provide detailed, comprehensive, and in-depth explanations in your response.\n\n"
+         "3. Provide detailed, comprehensive, and in-depth explanations in your response.\n"
+         "4. Use the provided Chat History for context if it is relevant to the question.\n\n"
+         "Chat History:\n{chat_history}\n\n"
          "Retrieved Context:\n{context}"),
         ("human", "Question: {question}"),
     ])
@@ -629,6 +631,7 @@ def ensure_startup():
         if _startup_done:
             return
         load_chain()
+        database.init_db()
         _startup_done = True
 
 
@@ -723,12 +726,12 @@ Output ONLY valid JSON. Do not include markdown formatting or extra text."""
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    global chat_history
     if chain is None:
         return jsonify({"error": "Backend not ready. Please wait a moment."}), 503
 
-    data     = request.json or {}
-    question = data.get("question", "").strip()
+    data       = request.json or {}
+    question   = data.get("question", "").strip()
+    session_id = data.get("session_id", "default")
     if not question:
         return jsonify({"error": "Question cannot be empty."}), 400
 
@@ -815,7 +818,9 @@ def chat():
                 return
             
             full_answer = ""
-            for chunk in chain.stream({"question": question_for_llm, "context": context_text}):
+            history_rows = database.get_chat_history(session_id)
+            history_text = "\n".join([f"{row['role'].upper()}: {row['content']}" for row in history_rows[-10:]])
+            for chunk in chain.stream({"question": question_for_llm, "context": context_text, "chat_history": history_text}):
                 if "<think>" in chunk or "</think>" in chunk:
                     continue
                 full_answer += chunk
@@ -826,8 +831,8 @@ def chat():
             if not full_answer.strip():
                 yield f"data: {json.dumps({'chunk': 'I could not generate an answer.'})}\n\n"
 
-            chat_history.append(HumanMessage(content=question))
-            chat_history.append(AIMessage(content=full_answer.strip()))
+            database.add_message(session_id, "user", question)
+            database.add_message(session_id, "ai", full_answer.strip())
             yield "data: [DONE]\n\n"
             
         return Response(stream_with_context(generate()), mimetype='text/event-stream')
@@ -840,9 +845,14 @@ def chat():
 
 @app.route("/api/reset", methods=["POST"])
 def reset():
-    global chat_history
-    chat_history = []
+    # Frontend handles starting a new session
     return jsonify({"status": "reset"})
+
+
+@app.route("/api/history", methods=["GET"])
+def get_history():
+    sessions = database.get_all_sessions()
+    return jsonify({"sessions": sessions})
 
 
 @app.route("/api/status")

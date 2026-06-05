@@ -92,18 +92,19 @@ function summarize(text, maxLength = 96) {
 
 function buildHistoryItems(messages) {
   const entries = [];
-  for (let index = 0; index < messages.length; index += 2) {
+  for (let index = 0; index < messages.length; index++) {
     const userMessage = messages[index];
-    const assistantMessage = messages[index + 1];
-    if (!userMessage || userMessage.role !== "user") continue;
-    entries.push({
-      id: `${userMessage.id}-${assistantMessage?.id || index}`,
-      question: userMessage.content || "",
-      answer: assistantMessage?.content || "",
-      sources: assistantMessage?.sources || [],
-      retrieval: assistantMessage?.retrieval || null,
-      fullConversation: messages.slice(0, index + 2)
-    });
+    if (userMessage && userMessage.role === "user") {
+      const assistantMessage = messages[index + 1];
+      entries.push({
+        id: `${userMessage.id}-${assistantMessage?.id || index}`,
+        question: userMessage.content || "",
+        answer: assistantMessage?.content || "",
+        sources: assistantMessage?.sources || [],
+        retrieval: assistantMessage?.retrieval || null,
+        fullConversation: messages.slice(0, index + 2)
+      });
+    }
   }
   return entries.slice(-5).reverse();
 }
@@ -259,6 +260,7 @@ function MalwareIntelligence() {
 export default function App() {
   const [activeTab, setActiveTab] = useState("chat"); // 'chat' or 'vulnerabilities'
   
+  const [currentSessionId, setCurrentSessionId] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState([initialMessage]);
   const [historyMessages, setHistoryMessages] = useState([]);
   const [question, setQuestion] = useState("");
@@ -270,32 +272,54 @@ export default function App() {
   const bottomRef = useRef(null);
 
   const saveHistoryToLocal = (msgs) => {
-    try {
-      localStorage.setItem("cti_chat_history", JSON.stringify(msgs));
-      setHistoryMessages(buildHistoryItems(msgs));
-    } catch (e) {
-      console.error("Failed to save history", e);
-    }
+    setHistoryMessages(buildHistoryItems(msgs));
   };
 
   const loadHistory = async () => {
     try {
-      const stored = localStorage.getItem("cti_chat_history");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (messages.length <= 1) {
-            setMessages(parsed);
-          }
-          setHistoryMessages(buildHistoryItems(parsed));
+      const response = await fetch(buildApiUrl("/api/history"));
+      if (response.ok) {
+        const data = await response.json();
+        const sessions = data.sessions || {};
+        
+        const newHistoryItems = [];
+        for (const [sid, msgs] of Object.entries(sessions)) {
+          if (msgs.length === 0) continue;
+          
+          const formatted = msgs.map((msg, i) => ({
+            id: `db-${sid}-${i}`,
+            role: msg.role,
+            content: msg.content,
+            sources: [],
+            owaspRefs: [],
+            retrieval: null
+          }));
+          const fullMsgs = [initialMessage, ...formatted];
+          
+          const userMsg = formatted.find(m => m.role === 'user');
+          const assistantMsg = formatted.find(m => (m.role === 'ai' || m.role === 'assistant') && m !== initialMessage);
+          
+          newHistoryItems.push({
+            id: sid,
+            question: userMsg ? userMsg.content : "New Conversation",
+            answer: assistantMsg ? assistantMsg.content : "",
+            sources: [],
+            retrieval: null,
+            fullConversation: fullMsgs,
+            timestamp: msgs[0].timestamp
+          });
         }
+        
+        newHistoryItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setHistoryMessages(newHistoryItems.slice(0, 15));
       }
     } catch {
       setHistoryMessages([]);
     }
   };
 
-  const loadHistoryConversation = (msgs) => {
+  const loadHistoryConversation = (sid, msgs) => {
+    setCurrentSessionId(sid);
     setMessages(msgs);
   };
 
@@ -329,15 +353,9 @@ export default function App() {
     setIsStreaming(false);
   };
 
-  const resetChat = async () => {
-    try {
-      await fetch(buildApiUrl("/api/reset"), { method: "POST" });
-    } catch {
-      // Keep UI reset even if backend reset fails.
-    }
+  const resetChat = () => {
+    setCurrentSessionId(crypto.randomUUID());
     setMessages([initialMessage]);
-    localStorage.removeItem("cti_chat_history");
-    setHistoryMessages([]);
     setErrorText("");
   };
 
@@ -380,7 +398,7 @@ export default function App() {
       const response = await fetch(buildApiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: q, session_id: currentSessionId }),
         signal: controller.signal
       });
 
@@ -468,6 +486,7 @@ export default function App() {
       }
       
       saveHistoryToLocal(updatedMessages);
+      await loadHistory();
 
     } catch (error) {
       if (error.name !== "AbortError") {
@@ -546,15 +565,15 @@ export default function App() {
             </section>
 
             <section className="side-block history-panel">
-              <h2><HistoryIcon /> Recent History (Local)</h2>
+              <h2><HistoryIcon /> Recent History (Database)</h2>
               {historyMessages.length > 0 ? (
                 <div className="history-list">
                   {historyMessages.map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      className="history-item"
-                      onClick={() => loadHistoryConversation(item.fullConversation)}
+                      className={`history-item ${item.id === currentSessionId ? 'active-session' : ''}`}
+                      onClick={() => loadHistoryConversation(item.id, item.fullConversation)}
                       title="Click to load this conversation"
                     >
                       <p className="history-question">{summarize(item.question, 110)}</p>
@@ -567,7 +586,7 @@ export default function App() {
                   ))}
                 </div>
               ) : (
-                <p className="muted">No saved local history yet.</p>
+                <p className="muted">No saved database history yet.</p>
               )}
             </section>
 

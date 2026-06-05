@@ -140,6 +140,11 @@ body {
   transform: translateX(4px);
 }
 
+.active-session {
+  border-color: var(--accent);
+  background: #132024;
+}
+
 .history-question {
   margin: 0;
   font-weight: 700;
@@ -483,6 +488,11 @@ textarea:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.vuln-header h2 svg {
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
 }
 .vuln-header p {
   color: var(--muted);
