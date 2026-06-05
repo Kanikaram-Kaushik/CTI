@@ -23,7 +23,7 @@ env/
 # cti_rag_chatbot/faiss_index/
 
 # Data files (large)
-data/
+# data/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -57,7 +57,7 @@ env/
 # cti_rag_chatbot/faiss_index/
 
 # Data files (large)
-data/
+# data/
 
 # Jupyter
 .ipynb_checkpoints/

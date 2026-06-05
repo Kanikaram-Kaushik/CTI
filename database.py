@@ -2,7 +2,10 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat_history.db')
+if os.path.exists('/data'):
+    DB_FILE = '/data/chat_history.db'
+else:
+    DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat_history.db')
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
@@ -12,7 +15,6 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('DROP TABLE IF EXISTS messages')
     c.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
