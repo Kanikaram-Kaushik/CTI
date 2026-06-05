@@ -850,9 +850,15 @@ def reset():
 
 
 @app.route("/api/history", methods=["GET"])
-def get_history():
-    sessions = database.get_all_sessions()
-    return jsonify({"sessions": sessions})
+def get_all_history():
+    ensure_startup()
+    return jsonify({"sessions": database.get_all_sessions()})
+
+@app.route("/api/history/<session_id>", methods=["DELETE"])
+def delete_history_session(session_id):
+    ensure_startup()
+    database.delete_session(session_id)
+    return jsonify({"status": "success", "message": f"Session {session_id} deleted."})
 
 
 @app.route("/api/status")

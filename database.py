@@ -65,3 +65,10 @@ def clear_history():
     c.execute('DELETE FROM messages')
     conn.commit()
     conn.close()
+
+def delete_session(session_id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
+    conn.commit()
+    conn.close()

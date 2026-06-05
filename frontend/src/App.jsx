@@ -40,6 +40,16 @@ const HistoryIcon = () => (
   </svg>
 );
 
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+    <path d="M3 6h18"></path>
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+    <line x1="10" y1="11" x2="10" y2="17"></line>
+    <line x1="14" y1="11" x2="14" y2="17"></line>
+  </svg>
+);
+
 const initialMessage = {
   id: crypto.randomUUID(),
   role: "assistant",
@@ -323,6 +333,23 @@ export default function App() {
     setMessages(msgs);
   };
 
+  const deleteSession = async (e, sid) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(buildApiUrl(`/api/history/${sid}`), {
+        method: "DELETE"
+      });
+      if (response.ok) {
+        await loadHistory();
+        if (currentSessionId === sid) {
+          resetChat();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete session", err);
+    }
+  };
+
   useEffect(() => {
     const bootstrap = async () => {
       try {
@@ -576,7 +603,16 @@ export default function App() {
                       onClick={() => loadHistoryConversation(item.id, item.fullConversation)}
                       title="Click to load this conversation"
                     >
-                      <p className="history-question">{summarize(item.question, 110)}</p>
+                      <div className="history-header">
+                        <p className="history-question">{summarize(item.question, 110)}</p>
+                        <button 
+                          className="delete-session-btn" 
+                          onClick={(e) => deleteSession(e, item.id)}
+                          title="Delete this chat"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
                       <p className="history-answer">{summarize(item.answer, 140) || "No answer saved yet."}</p>
                       <p className="history-meta">
                         {item.sources.length} source{item.sources.length === 1 ? "" : "s"}
