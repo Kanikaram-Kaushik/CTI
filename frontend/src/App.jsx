@@ -174,25 +174,25 @@ function Message({ message }) {
   );
 }
 
-function VulnerabilityIntelligence() {
-  const [cveInput, setCveInput] = useState("");
-  const [cveData, setCveData] = useState(null);
+function MalwareIntelligence() {
+  const [malwareInput, setMalwareInput] = useState("");
+  const [malwareData, setMalwareData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleScan = async () => {
-    if (!cveInput.trim()) return;
+    if (!malwareInput.trim()) return;
     setLoading(true);
     setError("");
-    setCveData(null);
+    setMalwareData(null);
     try {
-      const response = await fetch(buildApiUrl(`/api/cve/${cveInput.trim().toUpperCase()}`));
+      const response = await fetch(buildApiUrl(`/api/malware/${encodeURIComponent(malwareInput.trim())}`));
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || "Failed to fetch CVE data.");
+        throw new Error(payload.error || "Failed to fetch malware data.");
       }
       const data = await response.json();
-      setCveData(data);
+      setMalwareData(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -203,50 +203,50 @@ function VulnerabilityIntelligence() {
   return (
     <div className="vuln-container">
       <div className="vuln-header">
-        <h2><ShieldIcon /> Vulnerability Intelligence</h2>
-        <p>Retrieve detailed threat intelligence, CVSS scoring, and mitigations.</p>
+        <h2><ShieldIcon /> Malware Intelligence</h2>
+        <p>Retrieve AI-powered threat scoring and defensive strategies for known malware.</p>
       </div>
 
       <div className="vuln-search-card">
-        <h3>CVE Database Query</h3>
-        <p>Enter a valid CVE identifier (e.g., CVE-2024-3400) to scan the database.</p>
+        <h3>Threat Database Query</h3>
+        <p>Enter the name of a virus, trojan, or tool (e.g., Emotet, Cobalt Strike) to scan the database.</p>
         <div className="vuln-search-box">
           <input 
             type="text" 
-            placeholder="CVE-2024-3400" 
-            value={cveInput}
-            onChange={(e) => setCveInput(e.target.value)}
+            placeholder="e.g. WannaCry" 
+            value={malwareInput}
+            onChange={(e) => setMalwareInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleScan()}
           />
-          <button onClick={handleScan} disabled={loading || !cveInput.trim()}>
+          <button onClick={handleScan} disabled={loading || !malwareInput.trim()}>
             {loading ? "Scanning..." : "Scan Database"}
           </button>
         </div>
         {error && <p className="error" style={{marginTop: "12px", padding: 0}}>{error}</p>}
       </div>
 
-      {cveData && (
+      {malwareData && (
         <div className="vuln-result-card">
           <div className="vuln-result-header">
             <div className="vuln-title-group">
-              <h2><BugIcon /> {cveData.id}</h2>
-              <span className="severity-badge">{cveData.severity} SEVERITY</span>
+              <h2><BugIcon /> {malwareData.id}</h2>
+              <span className="severity-badge">{malwareData.severity} THREAT</span>
             </div>
             <div className="cvss-gauge">
-              {cveData.cvss ? cveData.cvss.toFixed(1) : "N/A"}
-              <span>CVSS</span>
+              {malwareData.cvss ? malwareData.cvss.toFixed(1) : "N/A"}
+              <span>SCORE</span>
             </div>
           </div>
           
           <div className="vuln-details">
             <div className="vuln-section">
-              <h4>VULNERABILITY DESCRIPTION</h4>
-              <p>{cveData.description}</p>
+              <h4>MALWARE DESCRIPTION</h4>
+              <p>{malwareData.description}</p>
             </div>
             <div className="vuln-section">
-              <h4>REMEDIATION</h4>
+              <h4>DEFENSE STRATEGY</h4>
               <div className="remediation-box">
-                {cveData.remediation}
+                {malwareData.remediation}
               </div>
             </div>
           </div>
@@ -505,7 +505,7 @@ export default function App() {
             className={`nav-item ${activeTab === 'vulnerabilities' ? 'active' : ''}`}
             onClick={() => setActiveTab('vulnerabilities')}
           >
-            <ShieldIcon /> Vulnerability Intelligence
+            <ShieldIcon /> Malware Intelligence
           </button>
         </nav>
 
@@ -580,7 +580,7 @@ export default function App() {
 
       <main className="chat-shell">
         {activeTab === 'vulnerabilities' ? (
-          <VulnerabilityIntelligence />
+          <MalwareIntelligence />
         ) : (
           <>
             <header className="header">

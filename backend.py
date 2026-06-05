@@ -41,6 +41,8 @@ llm_mode     = "groq"
 vector_store = None
 attack_id_map = {}
 intrusion_set_map = {}
+malware_map = {}
+global_llm = None
 _startup_lock = threading.Lock()
 _startup_done = False
 
@@ -312,7 +314,7 @@ def _compute_confidence(question, source_docs, ranked_items, force_allow=False):
         return {
             "confidence": 0.0,
             "abstain": True,
-            "reasons": ["No supporting MITRE context was retrieved for this question."],
+            "reasons": ["No supporting MITRE/OWASP context was retrieved for this question."],
             "top_hybrid_score": 0.0,
             "top_dense_score": 0.0,
             "top_lexical_score": 0.0,
@@ -326,6 +328,8 @@ def _compute_confidence(question, source_docs, ranked_items, force_allow=False):
     # Confidence factors: retrieval strength + evidence count + entity mention signal.
     evidence_factor = min(len(source_docs) / 4.0, 1.0)
     entity_factor = 1.0 if re.search(r"\b(apt\s*\d+|t\d{4}(?:\.\d{3})?)\b", question, re.IGNORECASE) else 0.0
+    owasp_factor = 1.0 if re.search(r"\b(owasp|xss|sql|injection|auth|api|security|csrf|cors)\b", question, re.IGNORECASE) else 0.0
+    entity_factor = max(entity_factor, owasp_factor)
 
     confidence = (0.55 * top_hybrid) + (0.30 * evidence_factor) + (0.15 * entity_factor)
     confidence = max(0.0, min(confidence, 1.0))
@@ -337,7 +341,7 @@ def _compute_confidence(question, source_docs, ranked_items, force_allow=False):
     else:
         reasons.append("Top hybrid retrieval score is weak.")
 
-    reasons.append(f"Retrieved {len(source_docs)} supporting MITRE chunk(s).")
+    reasons.append(f"Retrieved {len(source_docs)} supporting MITRE/OWASP chunk(s).")
     if entity_factor > 0:
         reasons.append("Query includes an explicit ATT&CK entity pattern (APT/T-ID).")
 
@@ -468,6 +472,60 @@ def _load_intrusion_set_map():
     return mapping
 
 
+def _load_malware_map():
+    """Load malware/tools and their associated techniques from local MITRE STIX JSON."""
+    mapping = {}
+    if not os.path.exists(LOCAL_STIX_FILE):
+        return mapping
+
+    try:
+        with open(LOCAL_STIX_FILE, "r", encoding="utf-8") as f:
+            stix_data = json.load(f)
+        
+        objects = stix_data.get("objects", [])
+        
+        malware_objs = {}
+        for obj in objects:
+            if obj.get("type") in ("malware", "tool"):
+                malware_objs[obj["id"]] = obj
+                
+        technique_objs = {}
+        for obj in objects:
+            if obj.get("type") == "attack-pattern":
+                technique_objs[obj["id"]] = obj
+
+        relationships = {}
+        for obj in objects:
+            if obj.get("type") == "relationship" and obj.get("relationship_type") == "uses":
+                src = obj.get("source_ref")
+                dst = obj.get("target_ref")
+                if src in malware_objs and dst in technique_objs:
+                    if src not in relationships:
+                        relationships[src] = []
+                    relationships[src].append(technique_objs[dst].get("name", "Unknown Technique"))
+
+        for m_id, obj in malware_objs.items():
+            name = obj.get("name", "Unknown")
+            description = obj.get("description", "")
+            techniques = relationships.get(m_id, [])
+            
+            entry = {
+                "name": name,
+                "description": description,
+                "techniques": techniques,
+            }
+            
+            mapping[_normalize(name)] = entry
+            
+            for alias in obj.get("x_mitre_aliases", []):
+                mapping[_normalize(alias)] = entry
+                
+    except Exception as e:
+        print(f"Warning: failed to build malware map ({e})")
+
+    return mapping
+
+
 def _convert_markdown_to_html(text):
     """Convert markdown formatting (**bold**, ***bold-italic***, *italic*) to HTML tags."""
     # Order matters: process bold-italic first, then bold, then italic
@@ -532,12 +590,15 @@ def load_chain():
 
     attack_id_map = _load_attack_id_map()
     intrusion_set_map = _load_intrusion_set_map()
+    malware_map = _load_malware_map()
     print(f"Hybrid lexical chunks indexed: {len(hybrid_index_docs)}")
     print(f"Loaded ATT&CK technique map entries: {len(attack_id_map)}")
     print(f"Loaded intrusion-set map entries: {len(intrusion_set_map)}")
+    print(f"Loaded malware map entries: {len(malware_map)}")
 
-    llm = _try_groq()
-    if llm is None:
+    global global_llm
+    global_llm = _try_groq()
+    if global_llm is None:
         print("✗ WARNING: No Groq LLM available. Set GROQ_API_KEY and ensure Groq is reachable.")
         print("Backend will start, but chat will be disabled until LLM is configured.")
         return
@@ -549,12 +610,12 @@ def load_chain():
          "You are a strict cybersecurity-only assistant.\n"
          "1. Answer the user's question using ONLY the provided Retrieved Context.\n"
          "2. If the answer cannot be found in the context, do not guess or make up information. Instead, state that you do not have enough information to answer.\n"
-         "3. Keep the response clear, concise, and helpful.\n\n"
+         "3. Provide detailed, comprehensive, and in-depth explanations in your response.\n\n"
          "Retrieved Context:\n{context}"),
         ("human", "Question: {question}"),
     ])
 
-    chain = prompt | llm | StrOutputParser()
+    chain = prompt | global_llm | StrOutputParser()
     print("Chain ready [ok]")
 
 
@@ -598,7 +659,66 @@ def serve_frontend(path):
     if os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
         return send_from_directory(FRONTEND_DIST, "index.html")
 
-    return jsonify({"error": "Frontend build not found."}), 503
+    return jsonify({"error": "Frontend build not found"}), 404
+
+
+@app.route("/api/malware/<path:name>", methods=["GET"])
+def api_malware(name):
+    ensure_startup()
+    
+    normalized_name = _normalize(name)
+    if normalized_name not in malware_map:
+        return jsonify({"error": f"Malware or tool '{name}' not found in MITRE ATT&CK database."}), 404
+        
+    malware = malware_map[normalized_name]
+    
+    if global_llm is None:
+        return jsonify({"error": "Backend AI is not ready or configured. Please try again later."}), 503
+
+    system_prompt = """You are an expert Cyber Threat Intelligence analyst.
+Analyze the following malware/tool from the MITRE ATT&CK database.
+Name: {name}
+Description: {description}
+Techniques used: {techniques}
+
+Provide a JSON response with EXACTLY these four keys:
+- "score": A float between 0.0 and 10.0 representing the generalized threat score (10 being most dangerous).
+- "severity": A string, one of "LOW", "MEDIUM", "HIGH", or "CRITICAL".
+- "description": A detailed, comprehensive technical summary of the malware and its primary impact. Do not include references.
+- "defense": A detailed, actionable paragraph explaining the best mitigation or detection strategies against it.
+
+Output ONLY valid JSON. Do not include markdown formatting or extra text."""
+
+    user_prompt = f"Analyze {malware['name']}."
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", user_prompt),
+    ])
+    
+    malware_chain = prompt | global_llm | StrOutputParser()
+    try:
+        response_text = malware_chain.invoke({
+            "name": malware["name"],
+            "description": malware["description"],
+            "techniques": ", ".join(malware["techniques"]) or "None known",
+        })
+        
+        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        if json_match:
+            response_text = json_match.group(0)
+            
+        result = json.loads(response_text)
+        
+        return jsonify({
+            "id": malware["name"],
+            "severity": str(result.get("severity", "UNKNOWN")).upper(),
+            "cvss": float(result.get("score", 0.0)),
+            "description": result.get("description", malware["description"][:200] + "..."),
+            "remediation": result.get("defense", "Implement standard defense-in-depth and monitor techniques.")
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to analyze malware: {e}"}), 503
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -690,7 +810,7 @@ def chat():
 
             if not source_docs or confidence_meta["abstain"]:
                 abstain_reason = confidence_meta["reasons"][-1] if confidence_meta["reasons"] else "Low retrieval confidence."
-                yield f"data: {json.dumps({'chunk': f'I cannot answer this with enough confidence from the available MITRE ATT&CK sources ({abstain_reason}). Please ask a more specific MITRE technique, tactic, group, malware, tool, detection, or mitigation question.'})}\n\n"
+                yield f"data: {json.dumps({'chunk': f'I cannot answer this with enough confidence from the available MITRE & OWASP sources ({abstain_reason}). Please ask a more specific MITRE technique or OWASP web security question.'})}\n\n"
                 yield "data: [DONE]\n\n"
                 return
             

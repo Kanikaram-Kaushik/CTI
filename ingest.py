@@ -100,15 +100,59 @@ def create_vector_db(documents):
 
     print(f"Saving FAISS index to '{FAISS_INDEX_PATH}'...")
     vector_store.save_local(FAISS_INDEX_PATH)
-    print("✓ Done! FAISS index created successfully.")
+    print("[OK] Done! FAISS index created successfully.")
+
+
+def load_owasp_data():
+    """Download OWASP Cheat Sheet Series and load markdown files."""
+    owasp_dir = "data/CheatSheetSeries"
+    if not os.path.exists(owasp_dir):
+        print("Cloning OWASP CheatSheetSeries...")
+        try:
+            import subprocess
+            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/OWASP/CheatSheetSeries.git", owasp_dir], check=True)
+        except Exception as e:
+            print(f"✗ ERROR: Cannot clone OWASP CheatSheetSeries ({e})")
+            return []
+    
+    import glob
+    md_files = glob.glob(f"{owasp_dir}/docs/cheatsheets/*.md")
+    print(f"Processing {len(md_files)} OWASP markdown files...")
+    
+    documents = []
+    for filepath in md_files:
+        filename = os.path.basename(filepath)
+        name = filename.replace(".md", "").replace("_", " ")
+        url = f"https://cheatsheetseries.owasp.org/cheatsheets/{filename.replace('.md', '.html')}"
+        
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            doc_content = f"Name: {name} (OWASP Cheat Sheet)\nType: owasp-cheatsheet\nDescription: Security guidance and best practices.\n\n{content}"
+            
+            metadata = {
+                "id": filename,
+                "name": name,
+                "type": "owasp-cheatsheet",
+                "url": url,
+            }
+            documents.append(Document(page_content=doc_content, metadata=metadata))
+        except Exception as e:
+            print(f"Warning: could not read {filepath} ({e})")
+            
+    print(f"Loaded {len(documents)} OWASP documents.")
+    return documents
 
 
 if __name__ == "__main__":
-    docs = load_mitre_data()
-    if docs:
-        create_vector_db(docs)
-        print("\n✓ Ingestion complete! Your app now has the MITRE ATT&CK data.")
+    docs = load_mitre_data() or []
+    owasp_docs = load_owasp_data() or []
+    all_docs = docs + owasp_docs
+    if all_docs:
+        create_vector_db(all_docs)
+        print("\n[OK] Ingestion complete! Your app now has the MITRE ATT&CK and OWASP data.")
     else:
-        print("\n✗ No documents found to process.")
+        print("\n[ERROR] No documents found to process.")
         import sys
         sys.exit(1)
